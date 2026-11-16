@@ -163,7 +163,10 @@
   テンプレート (GPL-3.0) のコードは入れない。
 - 配布物: `release/` (git 管理外)。`docs/dist/LICENSE.txt` と
   `docs/dist/readme.txt` を同梱する。
-- 検証が終わったら必ず commit & push。
+- 検証が終わったら必ず commit & push。push 先は公開リポジトリ
+  https://github.com/110-kenichi/SecondReality-AGA (remote `origin`) の
+  作業ブランチ `claude/project-thread-3ss2xa`。`main` はリリース用。
+  旧リポジトリ (remote `old`、private) の履歴を origin に push しない。
 
 ## セッション
 

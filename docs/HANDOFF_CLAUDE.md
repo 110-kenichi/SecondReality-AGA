@@ -14,9 +14,17 @@
   make-adf 系、ref_2nd_reality.s3m、tools/tmp_*.py) も入っている。
 - `3e5664e` TECHNO TROLL: ハードウェアスクロール化。実機で OK。
 - DOIT の最後のスライドアウトはハードウェアスクロール化しないと決定。
-- 公開準備: 新リポジトリ https://github.com/110-kenichi/SecondReality-AGA に
-  履歴なし 1 コミットで公開予定 (GitHub リリース v1.0.0 予定)。旧リポジトリ
-  SecondReality-A1200 は勤務先メール等が履歴に残るためプライベートのまま。
+- **公開済み**: https://github.com/110-kenichi/SecondReality-AGA (public)。
+  `853f868` (履歴なしの初回コミット) + `f1d83bb` (dist readme)。
+  リリース v1.0.0 (タグ → f1d83bb、SecondReality-AGA-v1.0.0.zip。HDF は
+  AmigaOS のファイルを含むおそれがあるので添付しない)。
+- **以後の作業は新リポジトリ**: remote `origin` = SecondReality-AGA、作業ブランチ
+  `claude/project-thread-3ss2xa`、`main` はリリース用。旧リポジトリ
+  SecondReality-A1200 は勤務先メール等が履歴に残るため private のアーカイブとして
+  remote `old` に残す (手元のブランチ `old-main` / `old-claude-project-thread-3ss2xa`)。
+  **旧履歴 (853f868 を祖先に持たないコミット) を origin に push しない。**
+  `.git/hooks/pre-push` が SecondReality-AGA への push でこれを拒否する
+  (フックは git 管理外。別 PC で clone したら旧履歴が無いので不要)。
   WinUAE 設定 (run/*.uae) の ROM・HDF パスは `@AMIGA_KICKSTART@` /
   `@AMIGA_WORKDIR@` で、run-m0.ps1 が環境変数 (既定 %USERPROFILE%\amiga-toolchain)
   から埋める。

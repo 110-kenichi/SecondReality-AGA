@@ -1,10 +1,11 @@
-# SecondReality-A1200
+# SecondReality-AGA
 
 1993 年の DOS メガデモ **Second Reality** (Future Crew, 開発コード名 Unreal 2) を
 **Amiga 1200 + アクセラレータ (68030/68040, AGA, Fast RAM)** へ移植するプロジェクトです。
 
 - オリジナルソース: [mtuomi/SecondReality](https://github.com/mtuomi/SecondReality) (Unlicense / パブリックドメイン)
 - 移植計画・進捗・実装メモ: [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- 実行ファイル: [Releases](https://github.com/110-kenichi/SecondReality-AGA/releases) (v1.0.0)
 
 ## 現在の状況
 
@@ -53,8 +54,8 @@ reference/     オリジナルソース (下記手順で clone。リポジトリ
   (未設定の場合は `%USERPROFILE%\amiga-toolchain\...` が使われる。設定漏れは `run-m0.ps1` が明確なエラーで知らせる)
 - リポジトリとオリジナルソースの取得:
   ```powershell
-  git clone https://github.com/110-kenichi/SecondReality-A1200.git SecondReality-A1200
-  cd SecondReality-A1200
+  git clone https://github.com/110-kenichi/SecondReality-AGA.git SecondReality-AGA
+  cd SecondReality-AGA
   git clone https://github.com/mtuomi/SecondReality.git reference/SecondReality
   ```
 
@@ -108,7 +109,7 @@ cd ..\..\run
 > 3. 環境変数 `AMIGA_TOOLCHAIN` / `AMIGA_WORKDIR` を設定
 > 4. git config (user.name / user.email)
 > 5. GitHub サインインは人間が行う → 完了したら clone を実行
->    (本体: https://github.com/110-kenichi/SecondReality-A1200 +
+>    (本体: https://github.com/110-kenichi/SecondReality-AGA +
 >     reference: https://github.com/mtuomi/SecondReality.git → reference/SecondReality)
 > 6. ビルド確認 (src/m2 で gnumake -j8)
 >
