@@ -1,0 +1,58 @@
+Second Reality - unofficial Amiga AGA port
+==========================================
+
+This is an UNOFFICIAL fan port. It is not made, endorsed or supported by
+Future Crew or by any of the original authors.
+
+1. Second Reality (original demo, 1993, Future Crew)
+   Source code and data were released by the original authors in 2013
+   at https://github.com/mtuomi/SecondReality under the Unlicense
+   (public domain dedication). The graphics, music (MUSIC0.S3M /
+   MUSIC1.S3M) and other data in data/ are taken or converted from that
+   release.
+
+   Original credits (from the demo):
+     Code      : Psi, Trug, Wildfire
+     Graphics  : Marvel, Pixel, Skaven
+     Music     : Purple Motion, Skaven
+     Additional design : Abyss, Gore
+
+2. SecondReality++ (https://github.com/XorJS/SecondRealityPlusPlus)
+   Some final-release data and values (e.g. the end credits pictures and
+   texts) were taken from this C++ port. It is released under the
+   Unlicense.
+
+3. This Amiga port (code under src/ in the project repository)
+   Released under the Unlicense, the same as the original:
+
+   This is free and unencumbered software released into the public domain.
+
+   Anyone is free to copy, modify, publish, use, compile, sell, or
+   distribute this software, either in source code form or as a compiled
+   binary, for any purpose, commercial or non-commercial, and by any
+   means.
+
+   In jurisdictions that recognize copyright laws, the author or authors
+   of this software dedicate any and all copyright interest in the
+   software to the public domain. We make this dedication for the benefit
+   of the public at large and to the detriment of our heirs and
+   successors. We intend this dedication to be an overt act of
+   relinquishment in perpetuity of all present and future rights to this
+   software under copyright law.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+   IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+   ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+   OTHER DEALINGS IN THE SOFTWARE.
+
+   For more information, please refer to <http://unlicense.org/>
+
+4. Third-party code
+   m2.exe contains no third-party code. The start-up code and C runtime
+   helpers (support/crt.c, support/muldi3.asm) were written for this port
+   and are covered by item 3. The build uses GCC and the Amiga NDK headers
+   only as tools; nothing from them is distributed apart from what the
+   compiler generates.

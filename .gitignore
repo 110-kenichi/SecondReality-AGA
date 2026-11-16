@@ -1,0 +1,43 @@
+# ビルド生成物
+src/*/out/
+src/*/obj/
+
+# 実行・検証の生成物 (run/ はスクリプトと設定のみ管理)
+run/*.adf
+run/*.hdf
+run/*.png
+run/*.txt
+run/*.wav
+run/*.csv
+run/*.srm
+run/boot-startup-sequence
+
+# ホスト用ツールのビルド成果物
+tools/*.exe
+
+# 上流リポジトリのクローン (README の手順で clone する)
+reference/SecondReality/
+
+# OS / エディタ
+Thumbs.db
+Desktop.ini
+*.swp
+run/*.log
+run/tempo.cfg
+run/*.s3m
+run/glenz.cfg
+run/start.cfg
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# C++ 版 (SecondRealityPlusPlus) から取得したデータのキャッシュ
+reference/cpp/
+
+# 実機用の配布物 (run/make-hdf.ps1 の HDF から作る)
+release/
+run/prof.cfg
+run/bench.cfg
+run/analyze.cfg

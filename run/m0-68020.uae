@@ -1,0 +1,28 @@
+use_gui=no
+win32.start_not_captured=yes
+win32.nonotificationicon=yes
+kickstart_rom_file=@AMIGA_KICKSTART@
+chipset=aga
+agnusmodel=aga
+agnussize=2m
+chipmem_size=2
+bogomem_size=0
+cpu_model=68020
+cpu_speed=real
+cpu_compatible=false
+cpu_cycle_exact=false
+fastmem_size=8
+ntsc=false
+uaelog=true
+gfx_api=direct3d11
+# PAL 50Hz に合わせる: WinUAE は既定でホストのリフレッシュ (60Hz) に
+# 同期して 1.2 倍速で走るため、50Hz を明示する。
+gfx_vsync=false
+gfx_refreshrate=50
+# 起動用 HDF (RDB + FFS パーティション DH0)。make-hdf.ps1 で作成する
+hardfile2=rw,DH0:@AMIGA_WORKDIR@\m0.hdf,0,0,0,512,0,,
+floppy_speed=0
+nr_floppies=1
+# 音声は WinUAE の既定設定を使う (明示設定で無音になる環境があるため)
+# Sound: larger buffer to absorb missed vsyncs
+sound_max_buff=32768
