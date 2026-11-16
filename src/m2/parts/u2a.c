@@ -22,6 +22,7 @@
 #include <string.h>
 #include "../framework/video.h"
 #include "../framework/vblank.h"
+#include "../framework/mul64.h"   /* smul64: __muldi3 を使わない 64 ビット積 */
 #include "../framework/c2p.h"
 
 typedef long long s64;
@@ -123,7 +124,7 @@ static void clear_rmat(rmat *r) {
 /* ---- 行列 1 行分の回転 (UNIT=16384) ---- */
 static inline s32 rot_row(const rmat *r, int row, s32 x, s32 y, s32 z) {
     const s32 *m = &r->m[row * 3];
-    s64 s = (s64)m[0] * x + (s64)m[1] * y + (s64)m[2] * z;
+    s64 s = smul64(m[0], x) + smul64(m[1], y) + smul64(m[2], z);
     return (s32)(s >> 14);
 }
 
@@ -151,9 +152,9 @@ static void apply_camera(u2a_inst *ci) {
     rmat *r = &ci->r;
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
-            s64 s = (s64)cam->m[i * 3 + 0] * r0->m[0 * 3 + j]
-                  + (s64)cam->m[i * 3 + 1] * r0->m[1 * 3 + j]
-                  + (s64)cam->m[i * 3 + 2] * r0->m[2 * 3 + j];
+            s64 s = smul64(cam->m[i * 3 + 0], r0->m[0 * 3 + j])
+                  + smul64(cam->m[i * 3 + 1], r0->m[1 * 3 + j])
+                  + smul64(cam->m[i * 3 + 2], r0->m[2 * 3 + j]);
             r->m[i * 3 + j] = (s32)(s >> 14);
         }
     }
@@ -415,7 +416,7 @@ static void draw_tri(const s32 *v0, const s32 *v1, const s32 *v2, u8 col) {
 
 /* ---- バックフェイスカリング: dot(法線, 頂点) < 0 で可視 ---- */
 static int face_visible(const s16 *n, const s32 *v) {
-    s64 d = (s64)n[0] * v[0] + (s64)n[1] * v[1] + (s64)n[2] * v[2];
+    s64 d = smul64(n[0], v[0]) + smul64(n[1], v[1]) + smul64(n[2], v[2]);
     return d < 0;
 }
 
