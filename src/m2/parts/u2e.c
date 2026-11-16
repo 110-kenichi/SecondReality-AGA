@@ -506,13 +506,38 @@ static void fill_poly(void)
         }
     }
 
+    /* 有効な辺だけを追う (2026-11-16 ユーザー承認の最適化)。以前は 1 行ごとに
+     * 全部の辺を調べていた (PC で U2E を再生して 1 フレーム平均 9588 回)。
+     * 開始行の順に並べた辺を、その行で有効になったら act[] (辺の番号順) に
+     * 入れ、終わったら外す。左右の端と色は、以前と同じく番号順に見て
+     * 最小・最大 (同じ値なら先の番号) を取るので、結果は同じ。 */
+    int ord[PGMAX], nord = 0;
+    for (int i = 0; i < pg_n; i++) {
+        if (edge_y0[i] >= edge_y1[i])
+            continue;
+        int k = nord++;
+        while (k > 0 && edge_y0[ord[k - 1]] > edge_y0[i]) {
+            ord[k] = ord[k - 1];
+            k--;
+        }
+        ord[k] = i;
+    }
+    int act[PGMAX], na = 0, next = 0;
+
     for (int y = ymin; y < ymax; y++) {
+        while (next < nord && edge_y0[ord[next]] == y) {
+            int e = ord[next++], k = na++;
+            while (k > 0 && act[k - 1] > e) {
+                act[k] = act[k - 1];
+                k--;
+            }
+            act[k] = e;
+        }
         s32 xl = 0x7fffffff, xr = -0x7fffffff;
         int cl = 0, cr = 0;
         if (flat) {
-            for (int i = 0; i < pg_n; i++) {
-                if (y < edge_y0[i] || y >= edge_y1[i])
-                    continue;
+            for (int a = 0; a < na; a++) {
+                int i = act[a];
                 s32 x = edge_x[i];
                 if (x < xl) xl = x;
                 if (x > xr) xr = x;
@@ -520,9 +545,8 @@ static void fill_poly(void)
             }
             cl = cr = pg_c[0];
         } else {
-            for (int i = 0; i < pg_n; i++) {
-                if (y < edge_y0[i] || y >= edge_y1[i])
-                    continue;
+            for (int a = 0; a < na; a++) {
+                int i = act[a];
                 s32 x = edge_x[i];
                 int c = (int)(edge_c[i] >> 8);
                 if (x < xl) { xl = x; cl = c; }
@@ -530,6 +554,14 @@ static void fill_poly(void)
                 edge_x[i] += edge_dx[i];
                 edge_c[i] += edge_dc[i];
             }
+        }
+        /* この行で終わる辺を外す (次の行では y >= edge_y1) */
+        {
+            int w = 0;
+            for (int a = 0; a < na; a++)
+                if (y + 1 < edge_y1[act[a]])
+                    act[w++] = act[a];
+            na = w;
         }
         int x0 = (int)(xl >> 16);
         int x1 = (int)(xr >> 16);
@@ -542,7 +574,29 @@ static void fill_poly(void)
         u8 *d = g_dst + (u32)y * U2E_W;
         if (cl == cr) {
             int v = cl < 0 ? 0 : (cl > 255 ? 255 : cl);
-            memset(d + l, v, (unsigned long)(r - l));
+            /* memset の呼び出しをやめ、その場で 32 ビットずつ書く */
+            u8 *q = d + l;
+            int n = r - l;
+            while (n && ((u32)q & 3)) {
+                *q++ = (u8)v;
+                n--;
+            }
+            {
+                u32 w = (u32)v * 0x01010101u;
+                u32 *q4 = (u32 *)q;
+                while (n >= 16) {
+                    q4[0] = w; q4[1] = w; q4[2] = w; q4[3] = w;
+                    q4 += 4;
+                    n -= 16;
+                }
+                while (n >= 4) {
+                    *q4++ = w;
+                    n -= 4;
+                }
+                q = (u8 *)q4;
+            }
+            while (n--)
+                *q++ = (u8)v;
             continue;
         }
         int span = x1 - x0;
@@ -562,6 +616,20 @@ static void fill_poly(void)
             int tq = t / span;
             acc = t - tq * span;
             c = cl + step * offset + sign * tq;
+        }
+        if ((unsigned)cl <= 255u && (unsigned)cr <= 255u) {
+            /* 両端が 0..255 なら途中の色も両端の間に入るので、1 ドットごとの
+             * 範囲チェックは要らない (同じ値になる) */
+            for (int x = l; x < r; x++) {
+                d[x] = (u8)c;
+                acc += abs_rem;
+                c += step;
+                if (acc >= span) {
+                    c += sign;
+                    acc -= span;
+                }
+            }
+            continue;
         }
         for (int x = l; x < r; x++) {
             int v = c < 0 ? 0 : (c > 255 ? 255 : c);
