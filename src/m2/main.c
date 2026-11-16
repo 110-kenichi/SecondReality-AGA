@@ -10,12 +10,14 @@
 #include "framework/vblank.h"
 #include "framework/file.h"
 #include "framework/mem.h"
+#include "framework/mul64.h"
 #include "framework/input.h"
 #include "framework/dis.h"
 #include "music/music.h"
 #include "parts/scenes.h"
 
 #include <proto/exec.h>
+#include <exec/execbase.h>
 #include <proto/dos.h>
 #include <proto/graphics.h>
 #include <dos/dosextens.h>
@@ -558,6 +560,8 @@ static void trap_install(void) {
  * data/prof.txt へ平均と最大を書き出す。WinUAE では 68060 の速さを
  * 測れないため、実機で測るために使う (2026-11-15)。 */
 static int prof_on;
+/* 32x32->64 の MULS.L が使えるか (framework/mul64.h)。68060 だけ無い。 */
+int g_cpu_mul64;
 #define PROF_SCENES 20
 static u32 prof_n[PROF_SCENES], prof_r[PROF_SCENES], prof_c[PROF_SCENES],
            prof_f[PROF_SCENES], prof_rmax[PROF_SCENES], prof_fmax[PROF_SCENES];
@@ -585,6 +589,29 @@ static u32 prof_lines(void) {
 static const char *pm_tag[PROF_MARKS];
 static u16 pm_pos[PROF_MARKS];
 static int pm_n;
+/* パート内の段階別の時間 (U2E 用、2026-11-16 ユーザー承認)。
+ * パートは prof_now() で走査線時計を読み、prof_stage_add(i, 差) で足し、
+ * 1 描画ごとに prof_stage_frame() を呼ぶ。prof.txt に平均・最大を出す。 */
+#define PROF_STAGES 6
+static const char *const prof_st_name[PROF_STAGES] = {
+    "U2E-clear", "U2E-transform", "U2E-sort", "U2E-polys", "U2E-anim", "U2E-other" };
+static u32 prof_st_sum[PROF_STAGES], prof_st_cur[PROF_STAGES], prof_st_max[PROF_STAGES];
+static u32 prof_st_frames;
+u32 prof_now(void) { return prof_on ? prof_lines() : 0; }
+void prof_stage_add(int i, u32 v) {
+    if (prof_on && i >= 0 && i < PROF_STAGES)
+        prof_st_cur[i] += v;
+}
+void prof_stage_frame(void) {
+    if (!prof_on)
+        return;
+    for (int i = 0; i < PROF_STAGES; i++) {
+        prof_st_sum[i] += prof_st_cur[i];
+        if (prof_st_cur[i] > prof_st_max[i]) prof_st_max[i] = prof_st_cur[i];
+        prof_st_cur[i] = 0;
+    }
+    prof_st_frames++;
+}
 void prof_mark(const char *tag) {
     if (!prof_on || pm_n >= PROF_MARKS)
         return;
@@ -632,6 +659,15 @@ static void prof_write(void) {
         *p++ = '\n';
         if (p > buf + sizeof(buf) - 128)
             break;
+    }
+    for (int i = 0; i < PROF_STAGES && prof_st_frames && p < buf + sizeof(buf) - 64; i++) {
+        const char *t = "stage ";
+        while (*t) *p++ = *t++;
+        t = prof_st_name[i];
+        while (*t) *p++ = *t++;
+        *p++ = ' '; p = prof_num(p, prof_st_sum[i] / prof_st_frames);
+        *p++ = ' '; p = prof_num(p, prof_st_max[i]);
+        *p++ = '\n';
     }
     for (int i = 0; i < pm_n && p < buf + sizeof(buf) - 64; i++) {
         const char *t = "mark ";
@@ -1082,6 +1118,41 @@ static void bench_run(void) {
             v[n] = prof_lines() - t0;
         }
         p = bench_line(p, "mul64(muldi3)", v);
+        /* framework/mul64.h: 16 ビット分割版と (68060 以外の) MULS.L 64 ビット形。
+         * 結果の照合と、64000 回の時間 (2026-11-16)。 */
+        {
+            volatile int va2 = 1234567, vb2 = -7654321;
+            long long sacc = 0;
+            for (int n = 0; n < BENCH_N; n++) {
+                u32 t0 = prof_lines();
+                for (int i = 0; i < (int)BENCH_BYTES; i++)
+                    sacc += smul64_split(va2, vb2);
+                v[n] = prof_lines() - t0;
+            }
+            p = bench_line(p, "smul64_split", v);
+            if (g_cpu_mul64) {
+                u32 r = 0x2468ace1u, bad = 0;
+                for (int i = 0; i < 100000; i++) {
+                    r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+                    int a = (int)r;
+                    r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+                    int b = (int)r;
+                    if (smul64_hw(a, b) != smul64_split(a, b))
+                        bad++;
+                }
+                h = bad ? "mul64_hw_check MISMATCH" + 0 : "mul64_hw_check ok";
+                while (*h) *p++ = *h++;
+                *p++ = '\n';
+                for (int n = 0; n < BENCH_N; n++) {
+                    u32 t0 = prof_lines();
+                    for (int i = 0; i < (int)BENCH_BYTES; i++)
+                        sacc += smul64_hw(va2, vb2);
+                    v[n] = prof_lines() - t0;
+                }
+                p = bench_line(p, "smul64_hw(muls.l 64)", v);
+            }
+            chunky[3] = (u8)sacc;
+        }
         chunky[2] = (u8)(acc + (s32)acc64);
     }
     /* Blitter (合成) が動いている間に CPU がチップ RAM に書く時間
@@ -1194,6 +1265,8 @@ static void c2p_scene(const u8 *chunky, u8 *planes, int scene) {
 
 int main(void) {
     SysBase = *((struct ExecBase **)4UL);
+    /* 68060 (68060.library が AFF_68060 を立てる) 以外は MULS.L 64 ビット形を使う */
+    g_cpu_mul64 = (SysBase->AttnFlags & AFF_68060) ? 0 : 1;
     /* Workbench (アイコン) から起動されたときは WBStartup メッセージを
      * 受け取り、終了時に返す。受け取らないと Workbench が待ち続ける。
      * PROGDIR: は Workbench 起動でも exe のフォルダを指す。 */

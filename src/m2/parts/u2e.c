@@ -622,6 +622,7 @@ static u8 tri_color(u16 nrm, u8 flags, u8 base, const u16 *vi3,
 static void draw_object(u2e_inst *ci) {
     const u2e_obj *o = ci->obj;
     const rmat *r = &ci->r;
+    u32 st_a = prof_now();
 
     for (int i = 0; i < o->vnum; i++) {
         const u8 *p = o->vdata + i * 16;
@@ -651,6 +652,11 @@ static void draw_object(u2e_inst *ci) {
         if (sy < U2E_VIEW_TOP) vf |= VF_UP; else if (sy > U2E_VIEW_BOT) vf |= VF_DOWN;
         px[i] = sx; py[i] = sy; pvf[i] = vf;
         vf_and &= vf;
+    }
+    {
+        u32 t = prof_now();
+        prof_stage_add(1, t - st_a);    /* 頂点・法線の回転と投影 */
+        st_a = t;
     }
     if (vf_and) {
         u2e_dbg_skip++;
@@ -704,6 +710,11 @@ static void draw_object(u2e_inst *ci) {
         }
     }
 
+    {
+        u32 t = prof_now();
+        prof_stage_add(2, t - st_a);    /* ポリゴンの並べ替え・ORD 選択 */
+        st_a = t;
+    }
     int drawcount = ordsel ? ordn : np;
     for (int pi = 0; pi < drawcount; pi++) {
         int polyi;
@@ -861,7 +872,7 @@ static void draw_object(u2e_inst *ci) {
         fill_poly();
         u2e_dbg_polys++;
     }
-
+    prof_stage_add(3, prof_now() - st_a);   /* 裏面判定・クリップ・塗り */
 }
 
 /* ---- デバッグ計測バー (上部の黒帯 y=0..31 に表示) ----
@@ -1072,6 +1083,8 @@ int u2e_render(u8 *chunky, u8 *planes, int width, int height) {
     /* 原本 U2E.C と同じ順序にするため、アニメーションの前進は描画の後で行う
      * (原本は「描画 → その後に現フレームを解析」)。ここではまだ進めない。 */
 
+    /* 段階別の時間 (prof.cfg があるときだけ、prof.txt の stage 行) */
+    u32 st_t0 = prof_now();
     /* 背景は黒 (原本 U2E.C は vid_init で全ページをクリアする) */
     for (int y = 0; y < 200; y++) {
         u8 *dst = chunky + (u32)(y + U2E_BG_TOP) * U2E_W;
@@ -1090,6 +1103,11 @@ int u2e_render(u8 *chunky, u8 *planes, int width, int height) {
     }
 
     g_dst = chunky;
+    {
+        u32 t = prof_now();
+        prof_stage_add(0, t - st_t0);
+        st_t0 = t;
+    }
 #ifdef U2E_DEBUG_CYCLE
     /* 2 秒 (100 VBL) ごとにモードを進める */
     u2e_dbg_mode = (int)(((vblank_frames() - u2e_dbg_t0) / 100u) % 10u);
@@ -1148,8 +1166,13 @@ int u2e_render(u8 *chunky, u8 *planes, int width, int height) {
 #endif
     }
 
+    {
+        u32 t = prof_now();
+        prof_stage_add(5, t - st_t0);   /* カメラ行列・オブジェクトの並べ替え */
+    }
     for (int i = 0; i < onum; i++)
         draw_object(&co[order[i]]);
+    st_t0 = prof_now();
 
     u2e_dbg_on = onum;
 
@@ -1190,6 +1213,8 @@ int u2e_render(u8 *chunky, u8 *planes, int width, int height) {
             u2e_frame++;
         }
     }
+    prof_stage_add(4, prof_now() - st_t0); /* アニメーションの前進 */
+    prof_stage_frame();
 
     return 0;
 }

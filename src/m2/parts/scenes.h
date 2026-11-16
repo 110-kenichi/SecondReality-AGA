@@ -42,6 +42,9 @@ int credits_finished(void);
 int end_finished(void);
 
 void prof_mark(const char *tag);   /* main.c: 実機プロファイラの区切り記録 */
+u32 prof_now(void);                 /* main.c: 走査線時計 (prof 無効時は 0) */
+void prof_stage_add(int i, u32 v);  /* main.c: 段階 i に時間を足す */
+void prof_stage_frame(void);        /* main.c: 1 描画の区切り */
 
 void alku_release(void);
 void forest_release(void);
