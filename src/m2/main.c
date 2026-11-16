@@ -559,29 +559,49 @@ static void trap_install(void) {
  * 長さ (flip まで) を走査線 (1/15625 秒 = 64us) 単位で足し込み、終了時に
  * data/prof.txt へ平均と最大を書き出す。WinUAE では 68060 の速さを
  * 測れないため、実機で測るために使う (2026-11-15)。 */
-static int prof_on;
+int prof_on;
 /* 32x32->64 の MULS.L が使えるか (framework/mul64.h)。68060 だけ無い。 */
 int g_cpu_mul64;
 #define PROF_SCENES 20
 static u32 prof_n[PROF_SCENES], prof_r[PROF_SCENES], prof_c[PROF_SCENES],
            prof_f[PROF_SCENES], prof_rmax[PROF_SCENES], prof_fmax[PROF_SCENES];
+static u32 prof_back_frame, prof_back_vpos, prof_back_last, prof_back_raw;
+static u32 prof_back_prev_frame, prof_back_prev_vpos;
+static int prof_back_seen;
 static u32 prof_lines(void) {
-    u32 v1, v2, f;
+    u32 f, f2;
+    u16 high1, high2, low;
     do {
         f = vblank_frames();
-        v1 = *(volatile u32 *)((u8 *)custom + 0x004);     /* VPOSR/VHPOSR */
-        v2 = vblank_frames();
-    } while (f != v2);
-    u32 vpos = ((v1 >> 8) & 0x1FF);
+        high1 = *(volatile u16 *)((u8 *)custom + 0x004);
+        low = *(volatile u16 *)((u8 *)custom + 0x006);
+        high2 = *(volatile u16 *)((u8 *)custom + 0x004);
+        f2 = vblank_frames();
+        /* VPOSR V8 can change between the two 16-bit custom-bus reads. */
+    } while (f != f2 || ((high1 ^ high2) & 1));
+    u32 vpos = ((u32)(high2 & 1) << 8) | (low >> 8);
     u32 t = f * 313u + vpos;
     /* 走査線が 0 に戻ってから VERTB 割り込みで frame_counter が増えるまでに
      * 遅れがあると (割り込みが待たされたとき)、t が 1 VBL 分戻る。
      * 実機の prof.txt で PLZPART の render 最大が 4294967250 (= -46) に
-     * なった (2026-11-15)。時間は戻らないので、前回より小さければ 1 VBL 足す。 */
+     * なった (2026-11-15)。時間は戻らないので、前回より小さければ 1 VBL 足す。
+     * 同じ走査線を再び読んだ場合、補正済みの last との差はちょうど 313。 */
     static u32 last;
-    if (t < last && last - t < 313u)
+    static u32 prev_frame, prev_vpos;
+    if (prof_on && !prof_back_seen && t < last && last - t > 313u) {
+        prof_back_prev_frame = prev_frame;
+        prof_back_prev_vpos = prev_vpos;
+        prof_back_frame = f;
+        prof_back_vpos = vpos;
+        prof_back_last = last;
+        prof_back_raw = t;
+        prof_back_seen = 1;
+    }
+    if (t < last && last - t <= 313u)
         t += 313u;
     last = t;
+    prev_frame = f;
+    prev_vpos = vpos;
     return t;
 }
 /* 区切りの記録 (パートの中の待ちを抜けた時の音楽位置)。prof.txt に出す。 */
@@ -592,9 +612,10 @@ static int pm_n;
 /* パート内の段階別の時間 (U2E 用、2026-11-16 ユーザー承認)。
  * パートは prof_now() で走査線時計を読み、prof_stage_add(i, 差) で足し、
  * 1 描画ごとに prof_stage_frame() を呼ぶ。prof.txt に平均・最大を出す。 */
-#define PROF_STAGES 6
+#define PROF_STAGES 8
 static const char *const prof_st_name[PROF_STAGES] = {
-    "U2E-clear", "U2E-transform", "U2E-sort", "U2E-polys", "U2E-anim", "U2E-other" };
+    "U2E-clear", "U2E-transform", "U2E-sort", "U2E-polys", "U2E-anim", "U2E-other",
+    "U2E-fill", "U2E-clip" };
 static u32 prof_st_sum[PROF_STAGES], prof_st_cur[PROF_STAGES], prof_st_max[PROF_STAGES];
 static u32 prof_st_frames;
 u32 prof_now(void) { return prof_on ? prof_lines() : 0; }
@@ -667,6 +688,17 @@ static void prof_write(void) {
         while (*t) *p++ = *t++;
         *p++ = ' '; p = prof_num(p, prof_st_sum[i] / prof_st_frames);
         *p++ = ' '; p = prof_num(p, prof_st_max[i]);
+        *p++ = '\n';
+    }
+    if (prof_back_seen && p < buf + sizeof(buf) - 128) {
+        const char *t = "clock-back prevframe prevvpos frame vpos last raw ";
+        while (*t) *p++ = *t++;
+        p = prof_num(p, prof_back_prev_frame);
+        *p++ = ' '; p = prof_num(p, prof_back_prev_vpos);
+        *p++ = ' '; p = prof_num(p, prof_back_frame);
+        *p++ = ' '; p = prof_num(p, prof_back_vpos);
+        *p++ = ' '; p = prof_num(p, prof_back_last);
+        *p++ = ' '; p = prof_num(p, prof_back_raw);
         *p++ = '\n';
     }
     for (int i = 0; i < pm_n && p < buf + sizeof(buf) - 64; i++) {

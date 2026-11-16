@@ -19,6 +19,7 @@
  * 近平面 (z < 512) は三角形をクリップし、画面端は 2D クリップする。
  */
 #include "scenes.h"
+#include "visu_clip.h"
 #include <string.h>
 #include "../framework/video.h"
 #include "../framework/vblank.h"
@@ -260,15 +261,14 @@ static int clip2d(const s32 *in, int n, s32 *out, int mode, s32 bound) {
             out[m * 2] = ax; out[m * 2 + 1] = ay; m++;
         }
         if (ain != bin) {
-            s32 tn, td;
-            if (mode < 2) { tn = bound - ax; td = bx - ax; }
-            else          { tn = bound - ay; td = by - ay; }
-            if (td != 0) {
-                s32 ix = ax + ((bx - ax) * tn) / td;
-                s32 iy = ay + ((by - ay) * tn) / td;
-                if (mode == 0 || mode == 1) ix = bound; else iy = bound;
-                out[m * 2] = ix; out[m * 2 + 1] = iy; m++;
+            if (mode < 2) {
+                out[m * 2] = bound;
+                out[m * 2 + 1] = visu_clip_other(ax, bx, ay, by, bound);
+            } else {
+                out[m * 2] = visu_clip_other(ay, by, ax, bx, bound);
+                out[m * 2 + 1] = bound;
             }
+            m++;
         }
     }
     return m;
@@ -390,14 +390,17 @@ static void draw_tri(const s32 *v0, const s32 *v1, const s32 *v2, u8 col) {
             poly[n][0] = a[0]; poly[n][1] = a[1]; poly[n][2] = a[2]; n++;
         }
         if (ain != bin) {
-            s32 dz = b[2] - a[2];
-            if (dz != 0) {
-                s32 num = PROJ_ZMIN - a[2];
-                poly[n][0] = a[0] + ((b[0] - a[0]) * num) / dz;
-                poly[n][1] = a[1] + ((b[1] - a[1]) * num) / dz;
-                poly[n][2] = PROJ_ZMIN;
-                n++;
-            }
+            /* ADRAWCLP.ASM ZCLIPCLIP: always interpolate from the farther
+             * endpoint. The largest product in the U2A host replay was
+             * 1102927364, within signed 32-bit range. */
+            const s32 *far = a[2] > b[2] ? a : b;
+            const s32 *near = a[2] > b[2] ? b : a;
+            s32 dz = far[2] - near[2];
+            s32 num = far[2] - PROJ_ZMIN;
+            poly[n][0] = far[0] + ((near[0] - far[0]) * num) / dz;
+            poly[n][1] = far[1] + ((near[1] - far[1]) * num) / dz;
+            poly[n][2] = PROJ_ZMIN;
+            n++;
         }
     }
     if (n < 3)

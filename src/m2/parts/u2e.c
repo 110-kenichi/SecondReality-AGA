@@ -19,6 +19,7 @@
  * 近平面 (z < 512) は三角形をクリップし、画面端は 2D クリップする。
  */
 #include "scenes.h"
+#include "visu_clip.h"
 #include <string.h>
 #include "../framework/video.h"
 #include "../framework/vblank.h"
@@ -32,6 +33,7 @@ extern const u8 *g_u2e_obj;
 extern const u8 *g_u2e_pal;
 extern const u8 *g_u2e_script;
 extern const u8 *g_u2e_inst;
+extern int prof_on;
 
 #define U2E_W        320
 #define U2E_H        256
@@ -443,8 +445,13 @@ static int clip_pg(int *ix, int *iy, int *ic, int n,
             int den = dj - di;
             if (den == 0) den = 1;
             int num = bound - di;
-            ox[m] = ix[i] + (int)(((long)(ix[j] - ix[i]) * num) / den);
-            oy[m] = iy[i] + (int)(((long)(iy[j] - iy[i]) * num) / den);
+            if (mode <= 1) {
+                ox[m] = bound;
+                oy[m] = visu_clip_other(di, dj, iy[i], iy[j], bound);
+            } else {
+                ox[m] = visu_clip_other(di, dj, ix[i], ix[j], bound);
+                oy[m] = bound;
+            }
             oc[m] = ic[i] + (int)(((long)(ic[j] - ic[i]) * num) / den);
             m++;
         }
@@ -459,10 +466,11 @@ static void fill_poly(void)
 {
     if (pg_n < 3)
         return;
-    int ymin = pg_y[0], ymax = pg_y[0];
+    int ymin = pg_y[0], ymax = pg_y[0], flat = 1;
     for (int i = 1; i < pg_n; i++) {
         if (pg_y[i] < ymin) ymin = pg_y[i];
         if (pg_y[i] > ymax) ymax = pg_y[i];
+        if (pg_c[i] != pg_c[0]) flat = 0;
     }
     if (ymin < U2E_VIEW_TOP) ymin = U2E_VIEW_TOP;
     if (ymax > U2E_VIEW_BOT) ymax = U2E_VIEW_BOT;
@@ -491,23 +499,37 @@ static void fill_poly(void)
         edge_dx[i] = ((pg_x[hi] - pg_x[lo]) * 65536L) / dy;
         edge_x[i] = (pg_x[lo] * 65536L) + 0x8000L +
                     edge_dx[i] * (first - pg_y[lo] + 1);
-        edge_dc[i] = ((pg_c[hi] - pg_c[lo]) * 256L) / dy;
-        edge_c[i] = pg_c[lo] * 256L +
-                    edge_dc[i] * (first - pg_y[lo] + 1);
+        if (!flat) {
+            edge_dc[i] = ((pg_c[hi] - pg_c[lo]) * 256L) / dy;
+            edge_c[i] = pg_c[lo] * 256L +
+                        edge_dc[i] * (first - pg_y[lo] + 1);
+        }
     }
 
     for (int y = ymin; y < ymax; y++) {
         s32 xl = 0x7fffffff, xr = -0x7fffffff;
         int cl = 0, cr = 0;
-        for (int i = 0; i < pg_n; i++) {
-            if (y < edge_y0[i] || y >= edge_y1[i])
-                continue;
-            s32 x = edge_x[i];
-            int c = (int)(edge_c[i] >> 8);
-            if (x < xl) { xl = x; cl = c; }
-            if (x > xr) { xr = x; cr = c; }
-            edge_x[i] += edge_dx[i];
-            edge_c[i] += edge_dc[i];
+        if (flat) {
+            for (int i = 0; i < pg_n; i++) {
+                if (y < edge_y0[i] || y >= edge_y1[i])
+                    continue;
+                s32 x = edge_x[i];
+                if (x < xl) xl = x;
+                if (x > xr) xr = x;
+                edge_x[i] += edge_dx[i];
+            }
+            cl = cr = pg_c[0];
+        } else {
+            for (int i = 0; i < pg_n; i++) {
+                if (y < edge_y0[i] || y >= edge_y1[i])
+                    continue;
+                s32 x = edge_x[i];
+                int c = (int)(edge_c[i] >> 8);
+                if (x < xl) { xl = x; cl = c; }
+                if (x > xr) { xr = x; cr = c; }
+                edge_x[i] += edge_dx[i];
+                edge_c[i] += edge_dc[i];
+            }
         }
         int x0 = (int)(xl >> 16);
         int x1 = (int)(xr >> 16);
@@ -551,6 +573,16 @@ static void fill_poly(void)
                 acc -= span;
             }
         }
+    }
+}
+
+static void fill_poly_profiled(u32 *fill_time) {
+    if (prof_on) {
+        u32 start = prof_now();
+        fill_poly();
+        *fill_time += prof_now() - start;
+    } else {
+        fill_poly();
     }
 }
 
@@ -715,6 +747,7 @@ static void draw_object(u2e_inst *ci) {
         prof_stage_add(2, t - st_a);    /* ポリゴンの並べ替え・ORD 選択 */
         st_a = t;
     }
+    u32 fill_time = 0, clip_time = 0;
     int drawcount = ordsel ? ordn : np;
     for (int pi = 0; pi < drawcount; pi++) {
         int polyi;
@@ -795,6 +828,7 @@ static void draw_object(u2e_inst *ci) {
 #else
         if (orred & VF_NEAR) {
 #endif
+            u32 clip_start = prof_on ? prof_now() : 0;
             int nm = 0;
             for (int k = 0; k < pg_n; k++) {
                 int j = (k + 1 == pg_n) ? 0 : (k + 1);
@@ -823,6 +857,8 @@ static void draw_object(u2e_inst *ci) {
                     nm++;
                 }
             }
+            if (prof_on)
+                clip_time += prof_now() - clip_start;
             if (nm < 3)
                 continue;
             sx = nc_x; sy = nc_y; sc = nc_c;
@@ -843,7 +879,7 @@ static void draw_object(u2e_inst *ci) {
                 pg_y[k] = sy[k];
                 pg_c[k] = sc[k];
             }
-            fill_poly();
+            fill_poly_profiled(&fill_time);
             u2e_dbg_polys++;
             continue;
         }
@@ -857,10 +893,13 @@ static void draw_object(u2e_inst *ci) {
 #ifdef U2E_DEBUG_CYCLE
         if (!DBG_OFF(6)) {
 #endif
+        u32 clip_start = prof_on ? prof_now() : 0;
         m = clip_pg(clip_ax, clip_ay, clip_ac, m, clip_bx, clip_by, clip_bc, 0, 0);
         if (m >= 3) m = clip_pg(clip_bx, clip_by, clip_bc, m, clip_ax, clip_ay, clip_ac, 1, 319);
         if (m >= 3) m = clip_pg(clip_ax, clip_ay, clip_ac, m, clip_bx, clip_by, clip_bc, 2, U2E_VIEW_TOP);
         if (m >= 3) m = clip_pg(clip_bx, clip_by, clip_bc, m, clip_ax, clip_ay, clip_ac, 3, U2E_VIEW_BOT);
+        if (prof_on)
+            clip_time += prof_now() - clip_start;
 #ifdef U2E_DEBUG_CYCLE
         }
 #endif
@@ -869,10 +908,12 @@ static void draw_object(u2e_inst *ci) {
         for (int k = 0; k < m; k++) {
             pg_x[k] = clip_ax[k]; pg_y[k] = clip_ay[k]; pg_c[k] = clip_ac[k];
         }
-        fill_poly();
+        fill_poly_profiled(&fill_time);
         u2e_dbg_polys++;
     }
     prof_stage_add(3, prof_now() - st_a);   /* 裏面判定・クリップ・塗り */
+    prof_stage_add(6, fill_time);
+    prof_stage_add(7, clip_time);
 }
 
 /* ---- デバッグ計測バー (上部の黒帯 y=0..31 に表示) ----
