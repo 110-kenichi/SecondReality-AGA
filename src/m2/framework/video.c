@@ -50,6 +50,12 @@ static u8 cur_pal[256 * 3];    /* 現在のパレット (フェード用) */
  * (前のパートの残り) が 1 フレーム見える (ALKU->U2A の点滅、2026-11-17
  * ユーザー指摘)。描画先になったとき (video_flip) に戻す。 */
 static u8 restore_needed[VIDEO_NBUF];
+/* カスタム画面中のパレットは、表示中のリストへすぐ書かず、フレームの
+ * 終わり (video_flip / video_switch_custom_screen) にまとめて書く。
+ * VBL 直後に書くと、Copper がちょうどリスト先頭のパレットを読んでいる
+ * 最中と重なり、新しい色が前の絵に 1 フレーム先に乗る (ALKU の文字の
+ * フェード前後で色が乱れた、2026-11-17 ユーザー指摘)。 */
+static int cpal_dirty;
 
 /* コッパーリスト内の BPLCON1 / BPLxMOD / BPLxPT / DDFSTOP データ位置 */
 static u16 *bplcon1_slot[VIDEO_NBUF];
@@ -459,8 +465,38 @@ u32 video_frame_vbl(void) {
     return fr_target;
 }
 
+/* 走査線の位置 (0 = フレームの先頭、PAL は 0..312) */
+static int beam_line(void) {
+    u16 h, l, h2;
+    do {
+        h = *(volatile u16 *)((u8 *)custom + 0x004);    /* VPOSR (V8) */
+        l = *(volatile u16 *)((u8 *)custom + 0x006);    /* VHPOSR */
+        h2 = *(volatile u16 *)((u8 *)custom + 0x004);
+    } while ((h ^ h2) & 1);
+    return ((h2 & 1) << 8) | (l >> 8);
+}
+
+/* カスタム画面のパレットを表示中のリストへ書く。Copper はフレームの先頭で
+ * パレット (約 530 命令 = 約 10 走査線) を読むので、それが終わった後
+ * (20 行目以降) で、次の VBL に掛からないうち (305 行目まで) に書く。
+ * 書いた色は、同じフレームで書いたビットプレーンのポインタと一緒に
+ * 次のフレームから表示される。 */
+static void custom_commit(void) {
+    if (!cpal_dirty || !custom_screen)
+        return;
+    for (;;) {
+        int y = beam_line();
+        if (y >= 20 && y <= 305)
+            break;
+    }
+    write_palette_slot(custom_slot, pal_out);
+    slot_pal_ver[custom_slot] = pal_ver;
+    cpal_dirty = 0;
+}
+
 void video_flip(void) {
     if (custom_screen) {
+        custom_commit();
         fr_open = 0;
         return;                     /* カスタム画面中は切り替えない */
     }
@@ -514,6 +550,7 @@ void video_flip(void) {
 static void enter_custom_slot(void) {
     settle_pending();
     custom_slot = front;
+    cpal_dirty = 0;
     if (slot_pal_ver[front] != pal_ver) {
         write_palette_slot(front, pal_out);
         slot_pal_ver[front] = pal_ver;
@@ -566,14 +603,17 @@ void video_set_custom_screen_rows(u8 *planes, int stride_bytes, int rows) {
  * 1 回の set_bitplane_slot で全レジスタを更新するので、
  * 途中の状態が 1 フレーム表示されることがない。 */
 void video_switch_custom_screen(u8 *planes, int stride_bytes, int scroll_x) {
+    int was = custom_screen != 0;
     custom_hires = 0;
     custom_screen = planes;
     custom_stride = stride_bytes;
     custom_rows = SCREEN_H;
     custom_scroll_x = scroll_x;
     custom_scroll_y = 0;
-    enter_custom_slot();
+    if (!was)
+        enter_custom_slot();        /* 毎フレームの切り替えでは入り直さない */
     set_bitplane_slot(custom_slot, planes, stride_bytes, SCREEN_H, scroll_x, 0);
+    custom_commit();
 }
 
 /* 640x256 hires 4 プレーンのカスタム画面 (ENDSCRL 用)。
@@ -643,6 +683,10 @@ static void write_palette(const u8 *rgb) {
         for (int i = 0; i < 256 * 3; i++)
             pal_out[i] = rgb[i];
     pal_ver++;
+    if (custom_screen) {            /* custom_commit で書く */
+        cpal_dirty = 1;
+        return;
+    }
     int s = custom_screen ? custom_slot : back;
     write_palette_slot(s, pal_out);
     slot_pal_ver[s] = pal_ver;
