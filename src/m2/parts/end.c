@@ -39,7 +39,7 @@ extern const u8 *g_endpic_data;
 static u8 img_pal[256 * 3];
 static u8 work_pal[256 * 3];
 static const u8 *end_logo_data;
-static int end_logo_pages_written;
+static u8 end_logo_written[VIDEO_NBUF];   /* 画面バッファごとに絵を写したか */
 static int state;                /* 0: 白 / 1: フェードイン / 2: 待ち / 3: フェードアウト / 4: 黒 */
 static int frame;
 static int end_done;             /* フェードアウト完了 (原作 END.C の終了) */
@@ -55,7 +55,8 @@ void end_init(void) {
     frame = 0;
     end_done = 0;
     end_logo_data = 0;
-    end_logo_pages_written = 0;
+    for (int i = 0; i < VIDEO_NBUF; i++)
+        end_logo_written[i] = 0;
     if (!img)
         return;
 
@@ -85,12 +86,18 @@ int end_render(u8 *chunky, u8 *planes, int width, int height) {
     (void)width;
     (void)height;
 
-    if (end_logo_data && end_logo_pages_written < 2) {
-        u8 *dst = planes;
-        const u8 *src = end_logo_data;
-        for (int p = 0; p < 8; p++)
-            memcpy(dst + p * PLANE_SIZE, src + p * PLANE_SIZE, PLANE_SIZE);
-        end_logo_pages_written++;
+    /* 画面バッファすべてに 1 回ずつ絵を写す。以前は 2 枚だけで、トリプル
+     * バッファでは 3 枚目に U2E の最後の絵 (FUTURE CREW の文字) が残り、
+     * 交互に見えていた (2026-11-17 ユーザー報告)。 */
+    {
+        int bi = video_back_index();
+        if (end_logo_data && !end_logo_written[bi]) {
+            u8 *dst = planes;
+            const u8 *src = end_logo_data;
+            for (int p = 0; p < 8; p++)
+                memcpy(dst + p * PLANE_SIZE, src + p * PLANE_SIZE, PLANE_SIZE);
+            end_logo_written[bi] = 1;
+        }
     }
 
     switch (state) {
