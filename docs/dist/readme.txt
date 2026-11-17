@@ -46,6 +46,9 @@ Known limitations
   the middle of the screen.
 - Profiling: create data/prof.cfg (any content) to write per-part timings
   to data/prof.txt when the demo exits.
+- Triple buffering: create data/triple.cfg (any content). Parts that take
+  a little more than one frame to draw run faster, but the frame interval
+  is less even. Double buffering is the default.
 
 ------------------------------------------------------------------------
 日本語
@@ -59,3 +62,7 @@ Future Crew の PC デモ「Second Reality」(Assembly 1993) を、2013 年に
 起動: m2.exe と m2.exe.info と data フォルダを好きなフォルダに置き、
 Shell またはアイコンから起動。
 左クリックで終了、右クリックで次のパートへ。
+
+トリプルバッファ: data/triple.cfg (中身は何でも可) を置くと有効になります。
+描画が 1 フレームを少し超えるパートの fps が上がりますが、表示の間隔は
+不揃いになります。既定はダブルバッファです。

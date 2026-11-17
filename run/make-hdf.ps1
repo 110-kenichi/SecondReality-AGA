@@ -221,6 +221,13 @@ if ($env:M2_PROF -eq "1") {
   & $xdf $Out write $pc ("data/" + "prof.cfg") | Out-Null
 }
 
+# --- トリプルバッファ ($env:M2_TRIPLE=1 で data/triple.cfg を置く) ---
+if ($env:M2_TRIPLE -eq "1") {
+  $tc = Join-Path $run "triple.cfg"
+  [IO.File]::WriteAllText($tc, "1")
+  & $xdf $Out write $tc ("data/" + "triple.cfg") | Out-Null
+}
+
 # --- 実機用の転送速度テスト ($env:M2_BENCH=1 で data/bench.cfg を置く。
 #     起動直後に測って data/bench.txt に書き、デモは再生せずに終わる) ---
 if ($env:M2_BENCH -eq "1") {

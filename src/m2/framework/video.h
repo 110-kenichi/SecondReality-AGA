@@ -25,6 +25,8 @@ void video_flip(void);
 /* この絵が表示される VBL の予測値。パートは描画の時刻にこれを使う
  * (同じ絵の中では何度呼んでも同じ値)。 */
 u32 video_frame_vbl(void);
+/* 1 = トリプルバッファ、0 = ダブルバッファ (既定)。video_init の前に呼ぶ */
+void video_set_triple(int on);
 
 /* 両画面の 8 プレーンを 0 クリア (シーン切り替え用) */
 void video_clear_planes(void);

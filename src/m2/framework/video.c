@@ -23,6 +23,11 @@ static int front, back;
  * 表示される予定 (-1 = 無し)、back = 描画先。描き終わったらすぐ次の画面に
  * 描き始められるので、処理が 1 VBL を少し超えても 2 VBL 待たない。 */
 static int pend = -1;
+/* 使うバッファの数。既定は 2 (ダブルバッファ)。トリプルバッファは描画が
+ * 1 VBL を少し超えるときに fps が上がるが、表示間隔が 1 VBL と 2 VBL で
+ * 混ざって安定しないため、既定はダブルにした (2026-11-17 ユーザー判断)。
+ * data/triple.cfg があれば 3 (video_set_triple)。 */
+static int nbuf = 2;
 static u32 pend_vbl;
 /* パレット: 描画先の Copper リストにだけ書き、表示はその絵と同時に変わる。
  * 他のリストは、描画先になったときに最新の値へ合わせる (pal_ver)。 */
@@ -418,9 +423,13 @@ static u32 fr_start, fr_target, fr_last_disp;
 static u8 fr_hist[FR_HIST];
 static int fr_hi;
 
+void video_set_triple(int on) { nbuf = on ? 3 : 2; }
+
 u32 video_frame_vbl(void) {
-    if (custom_screen)
-        return vblank_frames();     /* カスタム画面は表示中のリストへ直接書く */
+    if (custom_screen || nbuf == 2)
+        return vblank_frames();     /* カスタム画面は表示中のリストへ直接書く。
+                                     * ダブルバッファは描き始めが VBL 直後に
+                                     * 揃うので、今の時刻でよい */
     if (!fr_open) {
         u32 lat = 1;
         for (int i = 0; i < FR_HIST; i++)
@@ -458,7 +467,15 @@ void video_flip(void) {
      * 見なすだけ (1 VBL 余分に待つ) で、表示中の画面に描くことはない */
     pend_vbl = vblank_frames();
     pend = back;
-    back = (VIDEO_NBUF * (VIDEO_NBUF - 1) / 2) - front - pend;   /* 残りの 1 枚 */
+    if (nbuf == 2) {
+        /* ダブルバッファ: 表示されるまで待ってから、前の表示画面に描く */
+        while (vblank_frames() == pend_vbl)
+            ;
+        front = pend;
+        pend = -1;
+        back = 1 - front;
+    } else
+        back = (VIDEO_NBUF * (VIDEO_NBUF - 1) / 2) - front - pend;   /* 残りの 1 枚 */
     fr_last_disp = pend_vbl + 1;    /* この絵が出る VBL */
     if (fr_open) {
         u32 l = ready + 1 - fr_start;

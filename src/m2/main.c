@@ -1497,6 +1497,19 @@ int main(void) {
                 prof_on = 1;
     }
     {
+        /* data/triple.cfg (中身は何でも可) があればトリプルバッファ
+         * (2026-11-17 ユーザー指示: 既定はダブル、好みで選べるように)。 */
+        u32 tsz = 0;
+        static const char *const tn[] = {
+            "PROGDIR:data/triple.cfg", "PROGDIR:data/triple.cfg.txt",
+            "PROGDIR:triple.cfg", "PROGDIR:triple.cfg.txt" };
+        for (int i = 0; i < 4; i++)
+            if (file_load_fast(tn[i], 64u, &tsz)) {
+                video_set_triple(1);
+                break;
+            }
+    }
+    {
         u32 bsz = 0;
         static const char *const bn[] = {
             "PROGDIR:data/bench.cfg", "PROGDIR:data/bench.cfg.txt",
