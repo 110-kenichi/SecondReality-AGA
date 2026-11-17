@@ -125,6 +125,9 @@
   zip は run/make-hdf.ps1 を環境変数なしで作った HDF の Work/ から m2.exe・
   m2.exe.info・data/* (start/prof/triple/predict/bench.cfg 除く) と
   docs/dist/LICENSE.txt・readme.txt を SecondReality-AGA/ に入れたもの)。
+  リリース v1.0.2 (2026-11-17、タグ → 94bc99d、同じ手順)。表示中の Copper リストは
+  走査線 20..305 で書く (video.c wait_list_idle / custom_commit)。VBL 直後に書くと
+  Copper が読む最中と重なり 1 フレーム色が乱れた。割り込み内から呼ばないこと。
 - バッファ方式: 既定ダブル。GLENZ・PLZPART のキューブ・MINVBALL・U2E は常に
   トリプル (main.c pick_buffers / plasma.c)。data/triple.cfg で全パートトリプル、
   data/predict.cfg でトリプル時の表示 VBL 予測 (video_frame_vbl) を ON。
