@@ -507,7 +507,7 @@ int dots_render(u8 *chunky, u8 *planes, int width, int height) {
         video_set_commit_area(DOT_PLANES, WIN_Y0, 200);
 
     /* run as many 70 Hz simulation ticks as the PAL VBLs that elapsed */
-    u32 now = vblank_frames();
+    u32 now = video_frame_vbl();
     u32 el = now - dots_last_vbl;
     if (el > 6)
         el = 6;

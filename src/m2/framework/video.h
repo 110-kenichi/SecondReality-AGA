@@ -22,6 +22,9 @@ u8 *video_front_planes(void);
 
 /* 垂直帰線待ち → 裏画面を表示 → 表裏交換 */
 void video_flip(void);
+/* この絵が表示される VBL の予測値。パートは描画の時刻にこれを使う
+ * (同じ絵の中では何度呼んでも同じ値)。 */
+u32 video_frame_vbl(void);
 
 /* 両画面の 8 プレーンを 0 クリア (シーン切り替え用) */
 void video_clear_planes(void);

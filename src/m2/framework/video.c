@@ -404,9 +404,43 @@ static void write_palette_slot(int s, const u8 *rgb);
  * 前の予約がまだ表示されていない (その後 VBL が来ていない) ときだけ、
  * VBL を待ってから予約する (描画が 1 VBL より速いとき、1 VBL に 1 枚)。
  * COP1LC は VBL で Copper が読み直すので、書いた後の VBL から表示される。 */
-void video_flip(void) {
+/* 表示時刻の予測 (2026-11-17 ユーザー承認、案 A)。
+ * トリプルバッファでは描き始めが VBL の途中になり、描き始めから表示までの
+ * VBL 数が毎回変わる。描き始めの時刻で動きを決めると、表示の間隔と動きの
+ * 量がずれて揺れる (ROTAZOOM / PLASMA など、ユーザー指摘)。
+ * そこで、この絵が表示される VBL を予測して返し、video_flip はその VBL
+ * より早く表示しない。予測には実行中に測った「描き始めから描き終わりの
+ * 次の VBL まで」の VBL 数 (直近 FR_HIST 枚の最大) を使う。固定値や
+ * prof の値は使わないので CPU の速さに依らない。 */
+#define FR_HIST 4
+static int fr_open;                 /* 1 = この絵の予測を返した */
+static u32 fr_start, fr_target, fr_last_disp;
+static u8 fr_hist[FR_HIST];
+static int fr_hi;
+
+u32 video_frame_vbl(void) {
     if (custom_screen)
+        return vblank_frames();     /* カスタム画面は表示中のリストへ直接書く */
+    if (!fr_open) {
+        u32 lat = 1;
+        for (int i = 0; i < FR_HIST; i++)
+            if (fr_hist[i] > lat)
+                lat = fr_hist[i];
+        fr_start = vblank_frames();
+        fr_target = fr_start + lat;
+        if ((s32)(fr_target - (fr_last_disp + 1)) < 0)
+            fr_target = fr_last_disp + 1;   /* 前の絵より後にしか出せない */
+        fr_open = 1;
+    }
+    return fr_target;
+}
+
+void video_flip(void) {
+    if (custom_screen) {
+        fr_open = 0;
         return;                     /* カスタム画面中は切り替えない */
+    }
+    u32 ready = vblank_frames();    /* 描き終わった時刻 */
     if (slot_pal_ver[back] != pal_ver) {    /* この絵のパレットを最新に */
         write_palette_slot(back, pal_out);
         slot_pal_ver[back] = pal_ver;
@@ -416,12 +450,24 @@ void video_flip(void) {
             ;                       /* 前の予約が表示されるのを待つ */
         front = pend;
     }
+    if (fr_open)                    /* 予測した VBL より早く出さない */
+        while ((s32)(vblank_frames() + 1 - fr_target) < 0)
+            ;
     custom->cop1lc = (u32)copper[back];
     /* 書いた後に読む: その間に VBL が来ても「まだ表示されていない」と
      * 見なすだけ (1 VBL 余分に待つ) で、表示中の画面に描くことはない */
     pend_vbl = vblank_frames();
     pend = back;
     back = (VIDEO_NBUF * (VIDEO_NBUF - 1) / 2) - front - pend;   /* 残りの 1 枚 */
+    fr_last_disp = pend_vbl + 1;    /* この絵が出る VBL */
+    if (fr_open) {
+        u32 l = ready + 1 - fr_start;
+        if ((s32)l < 1) l = 1;
+        if (l > 8) l = 8;
+        fr_hist[fr_hi] = (u8)l;
+        fr_hi = (fr_hi + 1) % FR_HIST;
+        fr_open = 0;
+    }
     if (restore_needed[back]) {     /* カスタム画面だったリストを通常に戻す */
         set_bitplane_slot(back, screen[back], SCREEN_W / 8, SCREEN_H, 0, 0);
         split_off(back);

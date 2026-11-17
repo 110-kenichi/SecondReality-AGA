@@ -546,7 +546,7 @@ int u2a_render(u8 *chunky, u8 *planes, int width, int height) {
 
     /* アニメーションを実時間で進める。
      * 参照映像に合わせて 1 VBL = 1 ステップ (50 コマ/秒) にしている。 */
-    u32 now = vblank_frames();
+    u32 now = video_frame_vbl();
     u32 el = now - u2a_last_vbl;
     if (el > 4) el = 4;
     u2a_last_vbl = now;

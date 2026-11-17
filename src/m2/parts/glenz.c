@@ -1107,14 +1107,14 @@ static int glenz_draw(u8 *chunky) {
      * 待っている間は zoomer2 を進めない (BEGLOGO のタイトルのまま)。 */
     if (!g_started) {
         if (dis_musplus() < -19) {
-            tl_last_vbl = vblank_frames();
+            tl_last_vbl = video_frame_vbl();
         } else {
             g_started = 1;
             mf0 = np_zframe;
         }
     }
     {
-        u32 now = vblank_frames();
+        u32 now = video_frame_vbl();
         u32 el = now - tl_last_vbl;
         int steps = 0;
         if (tl_last_vbl == 0)

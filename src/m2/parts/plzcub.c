@@ -286,7 +286,7 @@ int plzcub_render(u8 *chunky) {
     /* PAL 50 Hz: real time, so a missed frame does not slow the motion.
      * Original: getspl(4*256 + frames*4) with frames at 70 Hz.
      * 4 units/frame * 70 = 280 per second -> (t * 28) / 5 per VBL. */
-    u32 t = vblank_frames() - start_vbl;
+    u32 t = video_frame_vbl() - start_vbl;
     int pos = 1024 + (int)((t * 28u) / 5u);
     spl_eval(pos);
 

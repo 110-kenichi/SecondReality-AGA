@@ -253,7 +253,7 @@ int forest_render(u8 *chunky, u8 *planes, int width, int height) {
     if (!forest_planes || !g_forest_bg || !g_forest_mask)
         return 1;
 
-    u32 now = vblank_frames();
+    u32 now = video_frame_vbl();
     u32 el = now - forest_last_vbl;
     if (el > 6)
         el = 6;

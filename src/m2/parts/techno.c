@@ -489,7 +489,7 @@ static void pb_step(void) {
  * になる。bp は走査線ごとに +18 の **バイト**オフセット (表は 1,024 語)。 */
 /* 実際に経過した VBL 数から 70Hz 相当のステップ数を返す。 */
 static int timeline_steps(void) {
-    u32 now = vblank_frames();
+    u32 now = video_frame_vbl();
     u32 elapsed = now - pb_last_vbl;
     int steps = 0;
     pb_last_vbl = now;
@@ -1524,7 +1524,7 @@ int techno_render(u8 *chunky, u8 *planes, int width, int height) {    int i;
                 return 1;
             }
             dis_setmframe(0);
-            pb_last_vbl = vblank_frames();
+            pb_last_vbl = video_frame_vbl();
             pa_started = 1;
         }
         /* KOEB do_interference: 1 waitb ごとに 1 フレーム、256 フレーム

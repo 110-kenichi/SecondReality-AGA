@@ -216,7 +216,7 @@ int ddstars_render(u8 *chunky, u8 *planes, int width, int height) {
             q[i] = 0;
     }
 
-    u32 now = vblank_frames();
+    u32 now = video_frame_vbl();
     u32 el = now - dd_last_vbl;
     if (el > 6)
         el = 6;

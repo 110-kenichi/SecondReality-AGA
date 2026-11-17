@@ -148,7 +148,7 @@ static void lz_c2p(const u8 *chunky, u8 *planes)
  * 以前は描画 1 回ごとに vbl++ していたため、描画が遅いと遅れた。
  * 経過時間は vblank_frames() の差分から取る (AGENTS.md)。 */
 static int logical_frame(void) {
-    return (int)((vblank_frames() - phase_vbl) * 7u / 5u);
+    return (int)((video_frame_vbl() - phase_vbl) * 7u / 5u);
 }
 
 /* 原作 LENS/MAIN.C:
@@ -445,7 +445,7 @@ static void lens_draw(u8 *chunky)
             return;
         phase = 0;
         prof_mark("LENS-part1");
-        phase_vbl = vblank_frames();
+        phase_vbl = video_frame_vbl();
     }
     if (phase == 10) {
         if (dis_musplus() < -20 &&      /* LENS/MAIN.C:380 */
@@ -453,7 +453,7 @@ static void lens_draw(u8 *chunky)
             return;
         phase = 1;
         prof_mark("LENS-part2");
-        phase_vbl = vblank_frames();
+        phase_vbl = video_frame_vbl();
     }
     logframe = logical_frame();
 
@@ -535,7 +535,7 @@ static void lens_draw(u8 *chunky)
                 pal8[i] = 0;
             video_set_palette(pal8);
             rot_pal_intro(0);
-            phase_vbl = vblank_frames();
+            phase_vbl = video_frame_vbl();
         }
         return;
     }

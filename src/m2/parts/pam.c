@@ -127,7 +127,7 @@ int pam_render(u8 *chunky, u8 *planes, int width, int height) {
      * 1 回ごとに 7 を足していたため、描画が 50fps を下回る実機では
      * 爆発が遅くなっていた (2026-11-15 ユーザー報告、68060)。 */
     {
-        u32 now = vblank_frames();
+        u32 now = video_frame_vbl();
         u32 el = pam_last_vbl ? now - pam_last_vbl : 1;
         if (el > 8)
             el = 8;

@@ -241,7 +241,7 @@ int sinus_render(u8 *chunky, u8 *planes, int width, int height)
                 c2p_track_add(&sn_trk, 0, 256, 0, 320);
                 sn_y0 = 256;        /* 地形はまだ無い */
             }
-            sinus_last_vbl = vblank_frames();
+            sinus_last_vbl = video_frame_vbl();
             c2p_track_flush(&sn_trk, chunky, planes);
             return 1;
         }
@@ -256,7 +256,7 @@ int sinus_render(u8 *chunky, u8 *planes, int width, int height)
     }
 
     /* original: one iteration per 70 Hz frame -> 1.4 per PAL VBL */
-    u32 now = vblank_frames();
+    u32 now = video_frame_vbl();
     u32 el = now - sinus_last_vbl;
     if (el > 6)
         el = 6;

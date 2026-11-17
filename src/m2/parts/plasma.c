@@ -322,7 +322,7 @@ int plasma_render(u8 *chunky, u8 *planes, int width, int height) {
     (void)width;
     (void)height;
 
-    u32 now = vblank_frames();
+    u32 now = video_frame_vbl();
     u32 el = now - plz_last_vbl;
     if (el > 8)
         el = 8;

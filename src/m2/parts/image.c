@@ -101,7 +101,7 @@ int image_render(u8 *chunky, u8 *planes, int width, int height) {
         return 1;
 
     /* 70Hz フレーム数を VBL 経過から数える (1.4 フレーム/VBL) */
-    u32 now = vblank_frames();
+    u32 now = video_frame_vbl();
     u32 el = now - img_last_vbl;
     if (el > 10)
         el = 10;

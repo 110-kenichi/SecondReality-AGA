@@ -1169,7 +1169,7 @@ int u2e_render(u8 *chunky, u8 *planes, int width, int height) {
 
     /* 開始時のホワイトアウト。99 フレーム (70Hz) = 70.7 VBL。 */
     if (!intro_done) {
-        u32 now = vblank_frames();
+        u32 now = video_frame_vbl();
         u32 el = now - intro_last_vbl;
         if (el > 4)
             el = 4;
@@ -1307,7 +1307,7 @@ int u2e_render(u8 *chunky, u8 *planes, int width, int height) {
      * アニメは 1 フレーム/2 VBL = 35 フレーム/秒。
      * PAL 50Hz では 35/50 = 0.7 (7/10) フレーム/VBL。 */
     {
-        u32 now = vblank_frames();
+        u32 now = video_frame_vbl();
         u32 el = now - u2e_last_vbl;
         if (el > 8) el = 8;
         u2e_last_vbl = now;

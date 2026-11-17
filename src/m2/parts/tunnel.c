@@ -198,7 +198,7 @@ int tunnel_render(u8 *chunky, u8 *planes, int width, int height) {
 
     /* 原作 TUN10.PAS:200-225: dis_waitb() が返した 70Hz フレーム数だけ
      * アニメを進める。PAL では 1 VBL = 1.4 フレーム。 */
-    u32 now = vblank_frames();
+    u32 now = video_frame_vbl();
     if (now - tunnel_start_vbl < TUNNEL_LOAD_VBL) {
         tunnel_last_vbl = now;          /* 読み込み中は黒のまま */
         return 1;
