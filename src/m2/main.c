@@ -1846,13 +1846,17 @@ int main(void) {
             scene_list[pending_scene].init();
             cur_scene = pending_scene;
             if (seamless) {
+                /* 先にカスタム画面をやめる (表示は次の flip まで前の画面の
+                 * まま)。カスタム画面中に書いたパレットは表示中のリストへ
+                 * すぐ入り、前の画面の色が変わって点滅した (ALKU->U2A、
+                 * 2026-11-17 ユーザー指摘)。 */
+                video_leave_custom_deferred();
                 u8 *bp = video_back_planes();
                 if (!scene_list[cur_scene].render(video_chunky(), bp,
                                                   SCREEN_W, SCREEN_H))
                     c2p8_fast(video_chunky(), bp, SCREEN_W, SCREEN_H);
                 if (cur_scene == 1)
                     u2a_apply_palette();    /* GLENZ は render 内で設定 */
-                video_set_custom_screen(0, 0);  /* 次の VBL で裏画面へ */
                 video_flip();
                 fade = 64;
                 fade_state = 0;

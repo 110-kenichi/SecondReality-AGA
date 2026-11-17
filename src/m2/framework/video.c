@@ -40,6 +40,11 @@ static void settle_pending(void) {
     }
 }
 static u8 cur_pal[256 * 3];    /* 現在のパレット (フェード用) */
+/* カスタム画面を抜けたあと、通常画面のポインタへ戻す必要があるリスト。
+ * 表示中のリストをすぐ書き換えると、新しい絵が出る前に古い通常画面
+ * (前のパートの残り) が 1 フレーム見える (ALKU->U2A の点滅、2026-11-17
+ * ユーザー指摘)。描画先になったとき (video_flip) に戻す。 */
+static u8 restore_needed[VIDEO_NBUF];
 
 /* コッパーリスト内の BPLCON1 / BPLxMOD / BPLxPT / DDFSTOP データ位置 */
 static u16 *bplcon1_slot[VIDEO_NBUF];
@@ -197,6 +202,11 @@ static void build_copper(u16 *c, u8 *planes, int slot) {
 /* 表示の 130 行目から下に、planes (8 プレーン連続、1 行 40 バイト、
  * プレーン 1 枚 plane_rows 行) の first_row 行目以降を出す。FMODE=3、
  * 横スクロール無し。planes = 0 で分割をやめる。両方のコッパーリストに書く。 */
+static void split_off(int slot) {
+    split_slot[slot][0] = 0xFFFF;
+    split_slot[slot][1] = 0xFFFE;
+}
+
 void video_set_split(u8 *planes, int plane_rows, int first_row) {
     for (int slot = 0; slot < VIDEO_NBUF; slot++) {
         if (!planes) {
@@ -412,6 +422,39 @@ void video_flip(void) {
     pend_vbl = vblank_frames();
     pend = back;
     back = (VIDEO_NBUF * (VIDEO_NBUF - 1) / 2) - front - pend;   /* 残りの 1 枚 */
+    if (restore_needed[back]) {     /* カスタム画面だったリストを通常に戻す */
+        set_bitplane_slot(back, screen[back], SCREEN_W / 8, SCREEN_H, 0, 0);
+        split_off(back);
+        restore_needed[back] = 0;
+    }
+}
+
+/* カスタム画面に入るとき: 表示中のリストを使う。そのリストのパレットが
+ * 古ければ合わせる (入る直前に書いたパレットは描画先のリストにしか
+ * 入っていない。ENDSCRL の文字が暗かった、2026-11-17 ユーザー指摘)。 */
+static void enter_custom_slot(void) {
+    settle_pending();
+    custom_slot = front;
+    if (slot_pal_ver[front] != pal_ver) {
+        write_palette_slot(front, pal_out);
+        slot_pal_ver[front] = pal_ver;
+    }
+}
+
+/* カスタム画面をやめるが、表示はすぐには変えない。次の video_flip で
+ * 描いた絵へ切り替わる (前の画面を残したままつなぐ場面用)。
+ * カスタム画面のメモリは、その絵が表示されるまで解放しないこと。 */
+void video_leave_custom_deferred(void) {
+    if (!custom_screen)
+        return;
+    custom_hires = 0;
+    custom_screen = 0;
+    custom_scroll_x = 0;
+    custom_scroll_y = 0;
+    restore_needed[custom_slot] = 1;
+    for (int s = 0; s < VIDEO_NBUF; s++)
+        if (s != custom_slot)
+            split_off(s);
 }
 
 /* カスタムビットプレーン表示 (ハードウェア横スクロール用)
@@ -430,12 +473,11 @@ void video_set_custom_screen_rows(u8 *planes, int stride_bytes, int rows) {
     custom_scroll_x = 0;
     custom_scroll_y = 0;
     if (planes) {
-        settle_pending();
-        settle_pending();
-    custom_slot = front;
+        enter_custom_slot();
         set_bitplane_slot(custom_slot, planes, stride_bytes, rows, 0, 0);
     } else {
         set_bitplane_slot(front, screen[front], SCREEN_W / 8, SCREEN_H, 0, 0);
+        restore_needed[front] = 0;
         video_set_split(0, 0, 0);       /* 通常画面に戻すときは分割もやめる */
     }
 }
@@ -451,8 +493,7 @@ void video_switch_custom_screen(u8 *planes, int stride_bytes, int scroll_x) {
     custom_rows = SCREEN_H;
     custom_scroll_x = scroll_x;
     custom_scroll_y = 0;
-    settle_pending();
-    custom_slot = front;
+    enter_custom_slot();
     set_bitplane_slot(custom_slot, planes, stride_bytes, SCREEN_H, scroll_x, 0);
 }
 
@@ -468,12 +509,11 @@ void video_set_custom_hires(u8 *planes, int stride_bytes, int rows) {
     custom_scroll_x = 0;
     custom_scroll_y = 0;
     if (planes) {
-        settle_pending();
-        settle_pending();
-    custom_slot = front;
+        enter_custom_slot();
         set_bitplane_slot(custom_slot, planes, stride_bytes, rows, 0, 0);
     } else {
         set_bitplane_slot(front, screen[front], SCREEN_W / 8, SCREEN_H, 0, 0);
+        restore_needed[front] = 0;
     }
 }
 
@@ -538,6 +578,21 @@ void video_set_palette(const u8 *rgb) {
     for (int i = 0; i < 256 * 3; i++)
         cur_pal[i] = rgb[i];
     write_palette(rgb);
+}
+
+/* パレットをすべてのコッパーリストへすぐ書く (表示中の絵にもすぐ効く)。
+ * 表示位置などをすぐ変える場面で、古い絵が古いパレットで見えないように
+ * する (PLZPART の場面切り替え、2026-11-17 ユーザー指摘)。 */
+void video_set_palette_now(const u8 *rgb) {
+    for (int i = 0; i < 256 * 3; i++) {
+        cur_pal[i] = rgb[i];
+        pal_out[i] = rgb[i];
+    }
+    pal_ver++;
+    for (int s = 0; s < VIDEO_NBUF; s++) {
+        write_palette_slot(s, pal_out);
+        slot_pal_ver[s] = pal_ver;
+    }
 }
 
 /* 現在のパレットにフェード係数 (0-64) を掛けてコッパーへ書く (シーン遷移用)

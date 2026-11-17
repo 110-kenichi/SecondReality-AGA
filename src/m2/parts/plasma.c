@@ -349,7 +349,11 @@ int plasma_render(u8 *chunky, u8 *planes, int width, int height) {
                 black_acc = 0;
                 for (int i = 0; i < 768; i++)
                     fade_out_pal[i] = 0;
-                video_set_palette(fade_out_pal);
+                /* 表示位置はすべてのリストですぐ 0 に戻るので、パレットも
+                 * すぐ全部黒にする。描画先だけに書くと、表示中・予約中の
+                 * 前の場面の絵が前のパレットで一瞬見えた (トリプルバッファ
+                 * 化後、2026-11-17 ユーザー指摘)。 */
+                video_set_palette_now(fade_out_pal);
             }
             video_set_display_start(0);
         }

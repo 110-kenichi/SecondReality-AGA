@@ -31,6 +31,7 @@ void video_set_commit_area(int nplanes, int y0, int rows);
 
 /* パレット設定 (rgb: 256*3 バイト, 各成分 8bit, AGA 24bit パレット) */
 void video_set_palette(const u8 *rgb);
+void video_set_palette_now(const u8 *rgb);   /* 全リストへすぐ */
 
 /* 現在のパレット (256*3, 8bit) を返す。部分パートが直前の色を
  * 引き継ぐとき (PANICEND) に使う。 */
@@ -49,6 +50,7 @@ void video_set_custom_screen(u8 *planes, int stride_bytes);
 
 /* プレーン高さを指定する版 (縦スクロール用) */
 void video_set_custom_screen_rows(u8 *planes, int stride_bytes, int rows);
+void video_leave_custom_deferred(void);   /* 次の flip で通常画面へ */
 void video_set_custom_hires(u8 *planes, int stride_bytes, int rows); /* 640x256 hires 4 planes */
 
 /* 表示バッファとスクロール位置を同時に切り替える (ダブルバッファ用) */
