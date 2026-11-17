@@ -263,11 +263,11 @@ static const struct { u8 section, order; } start_pos[20] = {
 };
 static int start_scene = -1;
 /* ダブル / トリプルバッファの選択。既定はダブル、data/triple.cfg で
- * トリプル。U2E (18) は元々フレームレートが安定しないので常にトリプル
- * (2026-11-17 ユーザー指示)。 */
+ * トリプル。GLENZ (4) と U2E (18) は元々フレームレートが安定しないので
+ * 常にトリプル (2026-11-17 ユーザー指示)。 */
 static int g_triple;
 static void pick_buffers(int scene) {
-    video_set_triple(g_triple || scene == 18);
+    video_set_triple(g_triple || scene == 4 || scene == 18);
 }
 
 static void load_start_cfg(void) {
