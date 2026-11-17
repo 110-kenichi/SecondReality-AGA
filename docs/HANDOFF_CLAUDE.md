@@ -121,6 +121,13 @@
   `853f868` (履歴なしの初回コミット) + `f1d83bb` (dist readme)。
   リリース v1.0.0 (タグ → f1d83bb、SecondReality-AGA-v1.0.0.zip。HDF は
   AmigaOS のファイルを含むおそれがあるので添付しない)。
+  リリース v1.0.1 (2026-11-17、タグ → dd32c43、main も dd32c43 へ fast-forward。
+  zip は run/make-hdf.ps1 を環境変数なしで作った HDF の Work/ から m2.exe・
+  m2.exe.info・data/* (start/prof/triple/predict/bench.cfg 除く) と
+  docs/dist/LICENSE.txt・readme.txt を SecondReality-AGA/ に入れたもの)。
+- バッファ方式: 既定ダブル。GLENZ・PLZPART のキューブ・MINVBALL・U2E は常に
+  トリプル (main.c pick_buffers / plasma.c)。data/triple.cfg で全パートトリプル、
+  data/predict.cfg でトリプル時の表示 VBL 予測 (video_frame_vbl) を ON。
 - **以後の作業は新リポジトリ**: remote `origin` = SecondReality-AGA、作業ブランチ
   `claude/project-thread-3ss2xa`、`main` はリリース用。旧リポジトリ
   SecondReality-A1200 は勤務先メール等が履歴に残るため private のアーカイブとして
