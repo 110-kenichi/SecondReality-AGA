@@ -412,6 +412,9 @@ int plasma_render(u8 *chunky, u8 *planes, int width, int height) {
         cube_mode = 1;
         prof_mark("PLZ-cube");
         dis_setcopper(3, 0);
+        /* キューブは常にトリプルバッファ (2026-11-17 ユーザー指示)。
+         * 次のパートの切り替えで main の pick_buffers が設定し直す。 */
+        video_set_triple(1);
         /* 画面を消してから表示位置を戻す (プラズマの残りを見せない) */
         video_clear_planes();
         video_set_display_start(0);
