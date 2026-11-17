@@ -164,8 +164,8 @@ static void tr_changed(int y0, int y1, int x0, int x1) {
     }
 }
 static u8 phase_a_cache[4][200 * VROW];
-static u8 *phase_a_screen[2];
-static u8 phase_a_written[2];
+static u8 *phase_a_screen[VIDEO_NBUF];
+static u8 phase_a_written[VIDEO_NBUF];
 static u8 pal16[16][48];               /* KOE.C の pal[16][16][3] (6bit) */
 static u8 prefix8[256];                /* 1 バイトの prefix XOR */
 static u8 parity8[256];
@@ -307,8 +307,10 @@ void techno_init(void) {
     last_musrow = -1;
     doit_phase = 0;
     tr_state = 0;
-    phase_a_screen[0] = phase_a_screen[1] = 0;
-    phase_a_written[0] = phase_a_written[1] = 0;
+    for (int i = 0; i < VIDEO_NBUF; i++) {
+        phase_a_screen[i] = 0;
+        phase_a_written[i] = 0;
+    }
 }
 
 /* KOEB mixpal: dx<=256 はフェードイン、dx>256 は明るさ加算。 */
@@ -556,7 +558,7 @@ static void render_phase_a_planes(u8 *planes) {
     }
     for (i = 16 * 3; i < 256 * 3; i++)
         gpal[i] = 0;
-    for (i = 0; i < 2; i++) {
+    for (i = 0; i < VIDEO_NBUF; i++) {
         if (phase_a_screen[i] == screen) {
             slot = i;
             break;
@@ -1648,9 +1650,9 @@ int techno_render(u8 *chunky, u8 *planes, int width, int height) {    int i;
             return 1;
         {
             /* troll_render の結果を決める値 (パレット以外) */
-            static u8 *tk_buf[2];
-            static int tk_key[2][9], tk_drawn[9];
-            static int tk_valid[2], tk_drawn_valid;
+            static u8 *tk_buf[VIDEO_NBUF];
+            static int tk_key[VIDEO_NBUF][9], tk_drawn[9];
+            static int tk_valid[VIDEO_NBUF], tk_drawn_valid;
             static int tk_scene_gen = -1;
             u8 *chip = video_back_planes();
             int key[9] = { troll_pan, troll_band_top, troll_band_h, troll_band_w,
@@ -1659,13 +1661,14 @@ int techno_render(u8 *chunky, u8 *planes, int width, int height) {    int i;
             int slot;
             if (tk_scene_gen != troll_gen) {     /* TROLL に入るたびに初期化 */
                 tk_scene_gen = troll_gen;
-                tk_buf[0] = tk_buf[1] = 0;
-                tk_valid[0] = tk_valid[1] = 0;
+                for (int i = 0; i < VIDEO_NBUF; i++) {
+                    tk_buf[i] = 0;
+                    tk_valid[i] = 0;
+                }
                 tk_drawn_valid = 0;
             }
-            slot = (tk_buf[0] == chip) ? 0 : (tk_buf[1] == chip) ? 1 : -1;
-            if (slot < 0) {
-                slot = tk_buf[0] ? 1 : 0;
+            slot = video_back_index();      /* トリプルバッファの番号 */
+            if (tk_buf[slot] != chip) {
                 tk_buf[slot] = chip;
                 tk_valid[slot] = 0;             /* 必ず変換する */
             }

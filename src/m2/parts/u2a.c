@@ -96,8 +96,8 @@ struct u2a_rect { s16 y0, y1, x0, x1; };      /* y0..y1-1, x0..x1-1 */
 static struct u2a_rect fb;                     /* 今回塗った範囲 */
 static struct u2a_rect ch_prev;                /* chunky に残っている前回の枠 */
 static int u2a_bg_full;                        /* 次は背景を全部コピーする */
-static u8 *u2a_buf[2];
-static struct u2a_rect u2a_prev[2];
+static u8 *u2a_buf[VIDEO_NBUF];
+static struct u2a_rect u2a_prev[VIDEO_NBUF];
 
 static void rect_none(struct u2a_rect *r) { r->y0 = r->x0 = 0; r->y1 = r->x1 = 0; }
 
@@ -527,7 +527,8 @@ void u2a_init(void) {
     u2a_frac = 0;
     u2a_done = 0;
     u2a_bg_full = 1;
-    u2a_buf[0] = u2a_buf[1] = 0;
+    for (int i = 0; i < VIDEO_NBUF; i++)
+        u2a_buf[i] = 0;
     rect_none(&ch_prev);
 }
 
@@ -621,9 +622,9 @@ int u2a_render(u8 *chunky, u8 *planes, int width, int height) {
     ch_prev = fb;
 
     /* c2p: 初めての裏画面は全体、以降はその裏画面の前回の枠と今回の枠 */
-    int slot = (u2a_buf[0] == planes) ? 0 : (u2a_buf[1] == planes) ? 1 : -1;
-    if (slot < 0) {
-        slot = u2a_buf[0] ? 1 : 0;
+    /* 画面バッファの番号 (トリプルバッファ、2026-11-17) */
+    int slot = video_back_index();
+    if (u2a_buf[slot] != planes) {
         u2a_buf[slot] = planes;
         c2p8_fast(chunky, planes, U2A_W, U2A_H);
     } else {

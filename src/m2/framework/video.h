@@ -12,6 +12,10 @@ u8 *video_chunky(void);
 
 /* c2p の書き込み先 (裏画面の 8 プレーン先頭) */
 u8 *video_back_planes(void);
+/* 画面バッファの数 (トリプルバッファ) と、i 番目の画面・描画先の番号 */
+#define VIDEO_NBUF 3
+u8 *video_planes(int i);
+int video_back_index(void);
 
 /* 表画面の 8 プレーン先頭 */
 u8 *video_front_planes(void);

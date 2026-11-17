@@ -56,15 +56,14 @@ void image_init(void) {
 
     /* 両画面のプレーンへコピー */
     const u8 *src = img + IMG_DATA_OFF;
-    u8 *dstb = video_back_planes();
-    u8 *dstf = video_front_planes();
-    for (int p = 0; p < 8; p++) {
-        const u8 *sp = src + p * PLANE_SIZE;
-        u8 *dp1 = dstb + p * PLANE_SIZE;
-        u8 *dp2 = dstf + p * PLANE_SIZE;
-        for (int i = 0; i < PLANE_SIZE; i++) {
-            dp1[i] = sp[i];
-            dp2[i] = sp[i];
+    /* すべての画面バッファへ (トリプルバッファ、2026-11-17) */
+    for (int k = 0; k < VIDEO_NBUF; k++) {
+        u8 *dst = video_planes(k);
+        for (int p = 0; p < 8; p++) {
+            const u8 *sp = src + p * PLANE_SIZE;
+            u8 *dp = dst + p * PLANE_SIZE;
+            for (int i = 0; i < PLANE_SIZE; i++)
+                dp[i] = sp[i];
         }
     }
     /* 直前フレームの控え (GLENZ の zoomer2) 用に chunky も作っておく。

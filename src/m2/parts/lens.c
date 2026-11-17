@@ -59,9 +59,9 @@ static int lens_done;
  * 変換したのと同じプレーンになる。初めて使う裏画面は 256 行全体を変換する。 */
 struct lr { s16 y0, y1, x0, x1; };           /* 窓の中の行 y0..y1-1、列 x0..x1-1 */
 static int wr_y0, wr_y1, wr_x0, wr_x1;
-static u8 *lz_buf[2];
-static struct lr lz_pend[2][3];
-static int lz_npend[2];
+static u8 *lz_buf[VIDEO_NBUF];
+static struct lr lz_pend[VIDEO_NBUF][3];
+static int lz_npend[VIDEO_NBUF];
 
 static inline void wr_mark(int y, int xa, int xb)   /* 行 y の xa..xb (含む) */
 {
@@ -125,12 +125,12 @@ static void lz_c2p(const u8 *chunky, u8 *planes)
     if (have) {
         cur.y0 = (s16)wr_y0; cur.y1 = (s16)wr_y1;
         cur.x0 = (s16)wr_x0; cur.x1 = (s16)wr_x1;
-        lz_add(0, &cur);
-        lz_add(1, &cur);
+        for (int i = 0; i < VIDEO_NBUF; i++)
+            lz_add(i, &cur);
     }
-    int slot = (lz_buf[0] == planes) ? 0 : (lz_buf[1] == planes) ? 1 : -1;
-    if (slot < 0) {
-        slot = lz_buf[0] ? 1 : 0;
+    /* 画面バッファの番号 (トリプルバッファ、2026-11-17) */
+    int slot = video_back_index();
+    if (lz_buf[slot] != planes) {
         lz_buf[slot] = planes;
         c2p8_fast(chunky, planes, LW, 256);
     } else {
@@ -427,8 +427,10 @@ void lens_init(void)
     lens_done = 0;
     phase_vbl = vblank_frames();
     video_set_palette(pal8);
-    lz_buf[0] = lz_buf[1] = 0;
-    lz_npend[0] = lz_npend[1] = 0;
+    for (int i = 0; i < VIDEO_NBUF; i++) {
+        lz_buf[i] = 0;
+        lz_npend[i] = 0;
+    }
 }
 
 static void lens_draw(u8 *chunky)

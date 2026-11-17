@@ -103,16 +103,19 @@ static u8 jp_pal[768];
  * 「今回絵のある列」を合わせた範囲だけを変換すれば、全体を変換したのと
  * 同じプレーンになる。初めて使う裏画面は 256 行全体を変換する
  * (前のパートの絵や上下の帯を消すため。c2p_scene の最初の 2 回と同じ)。 */
-static u8 *jp_buf[2];
-static int jp_c0[2], jp_c1[2];
+static u8 *jp_buf[VIDEO_NBUF];
+static int jp_c0[VIDEO_NBUF], jp_c1[VIDEO_NBUF];
 
 static void jp_c2p(u8 *chunky, u8 *planes, int x_min, int x_end) {
-    int slot = (jp_buf[0] == planes) ? 0 : (jp_buf[1] == planes) ? 1 : -1;
+    /* 画面バッファの番号 (トリプルバッファ、2026-11-17) */
+    int slot = video_back_index();
+    if (jp_buf[slot] != planes)
+        slot = -slot - 1;               /* 初めて (または別の画面): 全体を変換 */
     int b0 = x_min >> 5, b1 = (x_end + 31) >> 5;
     if (x_end <= x_min)
         b0 = b1 = 0;
     if (slot < 0) {
-        slot = jp_buf[0] ? 1 : 0;
+        slot = -slot - 1;
         jp_buf[slot] = planes;
         c2p8_fast(chunky, planes, SCREEN_W, SCREEN_H);
         jp_c0[slot] = b0;
@@ -145,7 +148,8 @@ void jplogo_init(void) {
     slide_acc = 0;
     zoom_start_vbl = 0;
     jp_last_vbl = 0;
-    jp_buf[0] = jp_buf[1] = 0;
+    for (int i = 0; i < VIDEO_NBUF; i++)
+        jp_buf[i] = 0;
     /* JP.C:186-200: palette[64] を黒にし、絵の中の色 0 を 64 に置き換える。
      * 色 0 は U2E のホワイトアウト (U2E.C:285-295、色 1..253 だけ白へ) でも
      * 黒のまま残るので、置き換えないと白の中に黒い点が残る

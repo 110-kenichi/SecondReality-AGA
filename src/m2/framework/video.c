@@ -9,28 +9,48 @@ extern volatile struct Custom *custom;
 
 #define COPPER_WORDS 1200
 
-static u8 *screen[2];          /* 各 8 プレーン連続 (p * PLANE_BYTES) */
+static u8 *screen[VIDEO_NBUF];          /* 各 8 プレーン連続 (p * PLANE_BYTES) */
 /* screen[] のファスト RAM 側の写し。1 ドットずつ 8 プレーンを読み書きする
  * パートはこちらに描き、video_commit_back_shadow() で 32bit 単位で
  * チップ RAM へ写す (実機 68060 の速度対策、2026-11-15)。 */
-static u8 *shadow[2];
-static u16 *copper[2];
-static u16 *palhi[2][8];       /* 各コッパーリストのバンク別・上位 12bit 先頭 */
-static u16 *pallo[2][8];       /* 各コッパーリストのバンク別・下位 12bit 先頭 */
+static u8 *shadow[VIDEO_NBUF];
+static u16 *copper[VIDEO_NBUF];
+static u16 *palhi[VIDEO_NBUF][8];       /* 各コッパーリストのバンク別・上位 12bit 先頭 */
+static u16 *pallo[VIDEO_NBUF][8];       /* 各コッパーリストのバンク別・下位 12bit 先頭 */
 static u8 *chunky;
 static int front, back;
+/* トリプルバッファ (2026-11-17 ユーザー指示)。front = 表示中、pend = 次の VBL で
+ * 表示される予定 (-1 = 無し)、back = 描画先。描き終わったらすぐ次の画面に
+ * 描き始められるので、処理が 1 VBL を少し超えても 2 VBL 待たない。 */
+static int pend = -1;
+static u32 pend_vbl;
+/* パレット: 描画先の Copper リストにだけ書き、表示はその絵と同時に変わる。
+ * 他のリストは、描画先になったときに最新の値へ合わせる (pal_ver)。 */
+static u8 pal_out[256 * 3];    /* 最後に書いたパレット (フェード込み) */
+static u32 pal_ver, slot_pal_ver[VIDEO_NBUF];
+extern u32 vblank_frames(void);
+/* 予約中の画面があれば、それが表示されるまで待つ (カスタム画面に入るとき、
+ * 表示中の Copper リストを確定させるため)。 */
+static void settle_pending(void) {
+    if (pend >= 0) {
+        while (vblank_frames() == pend_vbl)
+            ;
+        front = pend;
+        pend = -1;
+    }
+}
 static u8 cur_pal[256 * 3];    /* 現在のパレット (フェード用) */
 
 /* コッパーリスト内の BPLCON1 / BPLxMOD / BPLxPT / DDFSTOP データ位置 */
-static u16 *bplcon1_slot[2];
-static u16 *bplmod_slot[2][2];
-static u16 *bplpt_slot[2][8][2];
-static u16 *ddfstop_slot[2];
-static u16 *fmode_slot[2];
-static u16 *ddfstrt_slot[2];
-static u16 *bplcon0_slot[2];
-static u16 *diwstrt_slot[2];   /* DIWSTRT value word (vertical display start) */
-static u16 *diwstop_slot[2];   /* DIWSTOP value word */
+static u16 *bplcon1_slot[VIDEO_NBUF];
+static u16 *bplmod_slot[VIDEO_NBUF][2];
+static u16 *bplpt_slot[VIDEO_NBUF][8][2];
+static u16 *ddfstop_slot[VIDEO_NBUF];
+static u16 *fmode_slot[VIDEO_NBUF];
+static u16 *ddfstrt_slot[VIDEO_NBUF];
+static u16 *bplcon0_slot[VIDEO_NBUF];
+static u16 *diwstrt_slot[VIDEO_NBUF];   /* DIWSTRT value word (vertical display start) */
+static u16 *diwstop_slot[VIDEO_NBUF];   /* DIWSTOP value word */
 static int win200;             /* 1 = 表示窓を 28..227 行の 200 行にする */
 
 /* 画面分割 (CRED 用、2026-11-16)。表示の 128 行目で上の画面から下の画面へ
@@ -42,9 +62,9 @@ static int win200;             /* 1 = 表示窓を 28..227 行の 200 行にす�
  *   WAIT 129 行目の右端 -> BPLCON0 = 8 プレーン (130 行目から下の画面)。
  * 切り替えの 2 行は黒 (色 0) になるので、そこが黒い画面でだけ使える。 */
 #define SPLIT_ROW 128
-static u16 *split_slot[2];     /* 分割ブロックの先頭 (WAIT の 1 語目) */
-static u16 *split_pt[2][8][2];
-static u16 *split_mod[2][2], *split_con1[2], *split_fmode[2], *split_ddf[2][2];
+static u16 *split_slot[VIDEO_NBUF];     /* 分割ブロックの先頭 (WAIT の 1 語目) */
+static u16 *split_pt[VIDEO_NBUF][8][2];
+static u16 *split_mod[VIDEO_NBUF][2], *split_con1[VIDEO_NBUF], *split_fmode[VIDEO_NBUF], *split_ddf[VIDEO_NBUF][2];
 
 /* PLZPART の下方向スライド用: 0 の 1 走査線。BPLxMOD=-40 で毎行同じ行を
  * 読ませ、スライド終端の残り 45 行を黒にする。 */
@@ -178,7 +198,7 @@ static void build_copper(u16 *c, u8 *planes, int slot) {
  * プレーン 1 枚 plane_rows 行) の first_row 行目以降を出す。FMODE=3、
  * 横スクロール無し。planes = 0 で分割をやめる。両方のコッパーリストに書く。 */
 void video_set_split(u8 *planes, int plane_rows, int first_row) {
-    for (int slot = 0; slot < 2; slot++) {
+    for (int slot = 0; slot < VIDEO_NBUF; slot++) {
         if (!planes) {
             split_slot[slot][0] = 0xFFFF;
             split_slot[slot][1] = 0xFFFE;
@@ -203,7 +223,7 @@ void video_set_split(u8 *planes, int plane_rows, int first_row) {
 }
 
 int video_init(void) {
-    front = 0; back = 1;
+    front = 0; back = 1; pend = -1;
 
     /* AROS 等が設定したプログラマブルビデオモードを解除して標準 PAL に戻す。
      * BEAMCON0 の PAL ビット (0x0020) を落として 0 を書くと NTSC (約 60Hz)
@@ -214,21 +234,22 @@ int video_init(void) {
     *(volatile u16 *)((u8 *)custom + 0x1FC) = 0; /* FMODE */
     custom->bplcon3 = 0;                          /* BPLCON3 リセット (BANK=0, LOCT=0) */
 
-    screen[0] = (u8 *)mem_alloc(SCREEN_PLANES * PLANE_BYTES, MEMF_CHIP | MEMF_CLEAR);
-    screen[1] = (u8 *)mem_alloc(SCREEN_PLANES * PLANE_BYTES, MEMF_CHIP | MEMF_CLEAR);
-    copper[0] = (u16 *)mem_alloc(COPPER_WORDS * 2, MEMF_CHIP | MEMF_CLEAR);
-    copper[1] = (u16 *)mem_alloc(COPPER_WORDS * 2, MEMF_CHIP | MEMF_CLEAR);
+    for (int i = 0; i < VIDEO_NBUF; i++) {
+        screen[i] = (u8 *)mem_alloc(SCREEN_PLANES * PLANE_BYTES, MEMF_CHIP | MEMF_CLEAR);
+        copper[i] = (u16 *)mem_alloc(COPPER_WORDS * 2, MEMF_CHIP | MEMF_CLEAR);
+        if (!screen[i] || !copper[i])
+            return 0;
+    }
     zero_row = (u8 *)mem_alloc(64, MEMF_CHIP | MEMF_CLEAR);
     /* chunky バッファは CPU 専用 → Fast RAM を優先 (無ければ任意のメモリ) */
     chunky = (u8 *)mem_alloc(SCREEN_W * SCREEN_H, MEMF_FAST | MEMF_CLEAR);
     if (!chunky)
         chunky = (u8 *)mem_alloc(SCREEN_W * SCREEN_H, MEMF_ANY | MEMF_CLEAR);
-    if (!screen[0] || !screen[1] || !copper[0] || !copper[1] ||
-        !zero_row || !chunky)
+    if (!zero_row || !chunky)
         return 0;
 
-    build_copper(copper[0], screen[0], 0);
-    build_copper(copper[1], screen[1], 1);
+    for (int i = 0; i < VIDEO_NBUF; i++)
+        build_copper(copper[i], screen[i], i);
 
     custom->cop1lc = (u32)copper[front];
     custom->copjmp1 = 0x7fff;
@@ -243,13 +264,17 @@ void video_shutdown(void) {
 u8 *video_chunky(void) { return chunky; }
 u8 *video_back_planes(void) { return screen[back]; }
 u8 *video_front_planes(void) { return screen[front]; }
+u8 *video_planes(int i) { return screen[i]; }
+int video_back_index(void) { return back; }
 
 /* 両画面の 8 プレーンを 0 クリア (シーン切り替え用) */
 void video_clear_planes(void) {
-    u32 *a = (u32 *)screen[0], *b = (u32 *)screen[1];
-    for (int i = 0; i < SCREEN_PLANES * PLANE_BYTES / 4; i++)
-        a[i] = b[i] = 0;
-    for (int k = 0; k < 2; k++)
+    for (int k = 0; k < VIDEO_NBUF; k++) {
+        u32 *a = (u32 *)screen[k];
+        for (int i = 0; i < SCREEN_PLANES * PLANE_BYTES / 4; i++)
+            a[i] = 0;
+    }
+    for (int k = 0; k < VIDEO_NBUF; k++)
         if (shadow[k]) {
             u32 *c = (u32 *)shadow[k];
             for (int i = 0; i < SCREEN_PLANES * PLANE_BYTES / 4; i++)
@@ -321,7 +346,7 @@ static void set_standard_pointers(int slot, int black) {
  * 対象 (カスタム画面・PLZPART の縦シフトとは同時に使わない)。 */
 void video_set_window200(int on) {
     win200 = on ? 1 : 0;
-    for (int slot = 0; slot < 2; slot++) {
+    for (int slot = 0; slot < VIDEO_NBUF; slot++) {
         *diwstrt_slot[slot] = win200 ? 0x4881 : 0x2C81;
         *diwstop_slot[slot] = win200 ? 0x10C1 : 0x2CC1;
         for (int p = 0; p < SCREEN_PLANES; p++) {
@@ -347,29 +372,46 @@ void video_set_display_start(int y) {
         black = 1;
     }
     u16 strt = (u16)((v << 8) | 0x0081);
-    *diwstrt_slot[0] = strt;
-    *diwstrt_slot[1] = strt;
+    for (int k = 0; k < VIDEO_NBUF; k++)
+        *diwstrt_slot[k] = strt;
     if (black != display_black) {
         display_black = black;
-        set_standard_pointers(0, black);
-        set_standard_pointers(1, black);
+        for (int k = 0; k < VIDEO_NBUF; k++)
+            set_standard_pointers(k, black);
     }
 }
 
 /* デバッグ用: 背景色 (COLOR00 の上位 12bit) を両コッパーリストへ設定 */
 void video_set_bg(u16 color) {
-    palhi[0][0][0] = color;
-    palhi[1][0][0] = color;
+    for (int k = 0; k < VIDEO_NBUF; k++)
+        palhi[k][0][0] = color;
 }
 
+static void write_palette_slot(int s, const u8 *rgb);
+
+/* 描き終わった back を次の VBL で表示するよう予約し、次の描画先を返す。
+ * トリプルバッファ: 表示中 (front)・予約中 (pend)・描画先 (back) の 3 枚。
+ * 前の予約がまだ表示されていない (その後 VBL が来ていない) ときだけ、
+ * VBL を待ってから予約する (描画が 1 VBL より速いとき、1 VBL に 1 枚)。
+ * COP1LC は VBL で Copper が読み直すので、書いた後の VBL から表示される。 */
 void video_flip(void) {
-    /* メインループ先頭の dis_waitb() が VBL 同期を行っているので、ここでは
-     * 待たない。COP1LC の変更は次のフレーム開始時に反映されるため、
-     * バックバッファへの描画と表示が競合しない。 */
     if (custom_screen)
         return;                     /* カスタム画面中は切り替えない */
+    if (slot_pal_ver[back] != pal_ver) {    /* この絵のパレットを最新に */
+        write_palette_slot(back, pal_out);
+        slot_pal_ver[back] = pal_ver;
+    }
+    if (pend >= 0) {
+        while (vblank_frames() == pend_vbl)
+            ;                       /* 前の予約が表示されるのを待つ */
+        front = pend;
+    }
     custom->cop1lc = (u32)copper[back];
-    int t = front; front = back; back = t;
+    /* 書いた後に読む: その間に VBL が来ても「まだ表示されていない」と
+     * 見なすだけ (1 VBL 余分に待つ) で、表示中の画面に描くことはない */
+    pend_vbl = vblank_frames();
+    pend = back;
+    back = (VIDEO_NBUF * (VIDEO_NBUF - 1) / 2) - front - pend;   /* 残りの 1 枚 */
 }
 
 /* カスタムビットプレーン表示 (ハードウェア横スクロール用)
@@ -388,7 +430,9 @@ void video_set_custom_screen_rows(u8 *planes, int stride_bytes, int rows) {
     custom_scroll_x = 0;
     custom_scroll_y = 0;
     if (planes) {
-        custom_slot = front;
+        settle_pending();
+        settle_pending();
+    custom_slot = front;
         set_bitplane_slot(custom_slot, planes, stride_bytes, rows, 0, 0);
     } else {
         set_bitplane_slot(front, screen[front], SCREEN_W / 8, SCREEN_H, 0, 0);
@@ -407,6 +451,7 @@ void video_switch_custom_screen(u8 *planes, int stride_bytes, int scroll_x) {
     custom_rows = SCREEN_H;
     custom_scroll_x = scroll_x;
     custom_scroll_y = 0;
+    settle_pending();
     custom_slot = front;
     set_bitplane_slot(custom_slot, planes, stride_bytes, SCREEN_H, scroll_x, 0);
 }
@@ -423,7 +468,9 @@ void video_set_custom_hires(u8 *planes, int stride_bytes, int rows) {
     custom_scroll_x = 0;
     custom_scroll_y = 0;
     if (planes) {
-        custom_slot = front;
+        settle_pending();
+        settle_pending();
+    custom_slot = front;
         set_bitplane_slot(custom_slot, planes, stride_bytes, rows, 0, 0);
     } else {
         set_bitplane_slot(front, screen[front], SCREEN_W / 8, SCREEN_H, 0, 0);
@@ -453,9 +500,9 @@ void video_set_scroll_y(int y) {
                       custom_scroll_x, y);
 }
 
-/* パレットをコッパーリストへ書く (cur_pal は更新しない) */
-static void write_palette(const u8 *rgb) {
-    for (int s = 0; s < 2; s++) {
+/* パレットを 1 つのコッパーリストへ書く */
+static void write_palette_slot(int s, const u8 *rgb) {
+    {
         for (int b = 0; b < 8; b++) {
             u16 *ph = palhi[s][b];
             u16 *pl = pallo[s][b];
@@ -467,6 +514,19 @@ static void write_palette(const u8 *rgb) {
             }
         }
     }
+}
+
+/* パレットを書く (cur_pal は更新しない)。カスタム画面中は表示中のリストへ
+ * すぐ書く。通常は描画先 (back) のリストだけに書き、その絵と一緒に表示が
+ * 変わる。他のリストは video_flip で描画先になったときに合わせる。 */
+static void write_palette(const u8 *rgb) {
+    if (rgb != pal_out)
+        for (int i = 0; i < 256 * 3; i++)
+            pal_out[i] = rgb[i];
+    pal_ver++;
+    int s = custom_screen ? custom_slot : back;
+    write_palette_slot(s, pal_out);
+    slot_pal_ver[s] = pal_ver;
 }
 
 void video_set_palette(const u8 *rgb) {

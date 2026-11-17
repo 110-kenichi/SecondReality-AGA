@@ -46,7 +46,7 @@ static const s16 *pcalc;
 static int ring_x[NRINGS], ring_y[NRINGS], ring_c[NRINGS];
 /* ダブルバッファのため、描画先のバックバッファには 2 フレーム前の点が
  * 残っている。フレーム番号のパリティで 2 世代を保持し、正しい世代を消す。 */
-static s16 px[2][NRINGS][NPOINTS], py[2][NRINGS][NPOINTS];
+static s16 px[VIDEO_NBUF][NRINGS][NPOINTS], py[VIDEO_NBUF][NRINGS][NPOINTS];
 
 static int sx_pos, sy_pos, frame;
 static u32 tunnel_start_vbl;          /* 読み込み待ち (TUNNEL_LOAD_VBL) の起点 */
@@ -153,7 +153,7 @@ void tunnel_init(void) {
         ring_y[z] = 0;
         ring_c[z] = 0;
     }
-    for (int b = 0; b < 2; b++)
+    for (int b = 0; b < VIDEO_NBUF; b++)
         for (int z = 0; z < NRINGS; z++)
             for (int i = 0; i < NPOINTS; i++)
                 px[b][z][i] = py[b][z][i] = -1;
@@ -212,7 +212,8 @@ int tunnel_render(u8 *chunky, u8 *planes, int width, int height) {
     tunnel_acc -= steps * 5;
 
     /* バックバッファには 2 描画前の点が残っている。その世代を消す。 */
-    int b = tunnel_renders & 1;
+    /* この画面バッファに前回描いた点 (トリプルバッファの番号ごと) */
+    int b = video_back_index();
     for (int r = 4; r <= 80; r++)
         for (int i = 0; i < NPOINTS; i++)
             if (px[b][r][i] >= 0)

@@ -40,7 +40,7 @@ static u8 cur_pal[768];
 static u32 ani_off;
 static int step, tick, pam_acc, pam_done;
 static u32 pam_last_vbl;
-static int pam_dirty;           /* 2 枚のバッファの両方に描くまで残す */
+static int pam_dirty;           /* 画面バッファすべてに描くまで残す */
 
 /* OUTTAA.C の wfade テーブル (0..63)。63 = 通常輝度。 */
 static const u8 wfade[PAM_STEPS] = {
@@ -98,7 +98,7 @@ void pam_init(void) {
     tick = 0;
     pam_acc = 0;
     pam_last_vbl = 0;
-    pam_dirty = 2;
+    pam_dirty = VIDEO_NBUF;   /* 3 枚の画面バッファすべてに描く (トリプルバッファ) */
     pam_done = 0;
     ani_off = 0;
 
@@ -140,7 +140,7 @@ int pam_render(u8 *chunky, u8 *planes, int width, int height) {
             step++;
             pam_decode(ani_page[step & 1]);
             set_fade_pal(wfade[step]);
-            pam_dirty = 2;
+            pam_dirty = VIDEO_NBUF;   /* 3 枚の画面バッファすべてに描く (トリプルバッファ) */
         } else {
             pam_done = 1;
         }

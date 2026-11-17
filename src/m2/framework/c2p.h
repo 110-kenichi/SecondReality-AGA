@@ -2,6 +2,7 @@
 #define C2P_H
 
 #include "framework.h"
+#include "video.h"   /* VIDEO_NBUF */
 
 /*
  * chunky (width*height, 8bit/px) → 8 プレーン planar 変換
@@ -25,9 +26,9 @@ void c2p4_cols(const u8 *src, u8 *planes, int y0, int rows, int bx0, int bx1);
  * 裏画面も変わっていないので、全体を変換したのと同じプレーンになる。
  * 初めて使う裏画面は 256 行全体を変換する。 */
 typedef struct {
-    u8 *buf[2];
-    s16 r[2][3][4];             /* y0, y1, x0, x1 (y1, x1 は含まない) */
-    u8 n[2];
+    u8 *buf[VIDEO_NBUF];        /* 画面バッファごと (トリプルバッファ) */
+    s16 r[VIDEO_NBUF][3][4];             /* y0, y1, x0, x1 (y1, x1 は含まない) */
+    u8 n[VIDEO_NBUF];
 } c2p_track;
 void c2p_track_reset(c2p_track *t);
 void c2p_track_add(c2p_track *t, int y0, int y1, int x0, int x1);

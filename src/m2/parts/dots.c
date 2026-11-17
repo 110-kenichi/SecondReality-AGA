@@ -55,10 +55,10 @@ typedef struct {
 static Dot dots[NDOTS];
 static u16 dot_order[NDOTS];
 static int sin1024[1024];
-static u8 *dots_page_planes[2];
-static s16 old_ball_x[2][NDOTS], old_ball_y[2][NDOTS];
-static s16 old_shadow_x[2][NDOTS], old_shadow_y[2][NDOTS];
-static u8 dots_page_initialized[2];
+static u8 *dots_page_planes[VIDEO_NBUF];
+static s16 old_ball_x[VIDEO_NBUF][NDOTS], old_ball_y[VIDEO_NBUF][NDOTS];
+static s16 old_shadow_x[VIDEO_NBUF][NDOTS], old_shadow_y[VIDEO_NBUF][NDOTS];
+static u8 dots_page_initialized[VIDEO_NBUF];
 
 static u8 palette[256 * 3];
 static u8 pal_out[256 * 3];
@@ -153,10 +153,10 @@ static void ball(u8 *planes, int x, int y, u8 color, u8 center) {
 }
 
 static int dots_page_index(u8 *planes) {
-    for (int page = 0; page < 2; page++)
+    for (int page = 0; page < VIDEO_NBUF; page++)
         if (dots_page_planes[page] == planes)
             return page;
-    for (int page = 0; page < 2; page++) {
+    for (int page = 0; page < VIDEO_NBUF; page++) {
         if (!dots_page_planes[page]) {
             dots_page_planes[page] = planes;
             for (int i = 0; i < NDOTS; i++) {
@@ -265,8 +265,10 @@ static void make_palette(void) {
 static int dots_armed;
 void dots_init(void) {
     dots_armed = 0;
-    dots_page_planes[0] = dots_page_planes[1] = 0;
-    dots_page_initialized[0] = dots_page_initialized[1] = 0;
+    for (int i = 0; i < VIDEO_NBUF; i++) {
+        dots_page_planes[i] = 0;
+        dots_page_initialized[i] = 0;
+    }
     for (int i = 0; i < 1024; i++) {
         /* sin(i*2pi/1024) * 256 を整数で近似 (テーブルは 1 回だけ生成) */
         int deg = i & 1023;

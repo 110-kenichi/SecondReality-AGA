@@ -174,8 +174,10 @@ void c2p4_cols(const u8 *src, u8 *planes, int y0, int rows, int bx0, int bx1) {
 }
 
 void c2p_track_reset(c2p_track *t) {
-    t->buf[0] = t->buf[1] = 0;
-    t->n[0] = t->n[1] = 0;
+    for (int i = 0; i < VIDEO_NBUF; i++) {
+        t->buf[i] = 0;
+        t->n[i] = 0;
+    }
 }
 
 static int trk_area(int y0, int y1, int x0, int x1) {   /* 行 x 32 ドット列 */
@@ -213,16 +215,23 @@ void c2p_track_add(c2p_track *t, int y0, int y1, int x0, int x1) {
     if (x1 > 320) x1 = 320;
     if (y1 <= y0 || x1 <= x0)
         return;
-    trk_add1(t, 0, y0, y1, x0, x1);
-    trk_add1(t, 1, y0, y1, x0, x1);
+    for (int i = 0; i < VIDEO_NBUF; i++)
+        trk_add1(t, i, y0, y1, x0, x1);
 }
 
 static void c2p_track_flush_rows_impl(c2p_track *t, const u8 *chunky, u8 *planes,
                                       int *ry0, int *ry1, int nplanes) {
     int y0 = 256, y1 = 0;
-    int s = (t->buf[0] == planes) ? 0 : (t->buf[1] == planes) ? 1 : -1;
+    int s = -1;
+    for (int i = 0; i < VIDEO_NBUF && s < 0; i++)
+        if (t->buf[i] == planes)
+            s = i;
     if (s < 0) {
-        s = t->buf[0] ? 1 : 0;
+        for (int i = 0; i < VIDEO_NBUF && s < 0; i++)
+            if (!t->buf[i])
+                s = i;
+        if (s < 0)
+            s = 0;
         t->buf[s] = planes;
         if (nplanes == 4)
             c2p4_fast(chunky, planes);

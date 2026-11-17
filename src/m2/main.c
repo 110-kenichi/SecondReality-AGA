@@ -1258,27 +1258,21 @@ static void bench_write(void) {
     }
 }
 
-static int c2p_full_frames = 2;
+static int c2p_full_frames = VIDEO_NBUF;
 static int c2p_last_scene = -1;
 /* 裏バッファごとの「上下の帯 (0..27, 228..255 行) に何か残っているかも」
  * フラグ。200 行だけ変換するときは、汚れているバッファの帯を先に 0 に
  * する。以前は前のシーンが 256 行書いた分が帯に残ることがあった
  * (2026-11-15 ユーザー報告)。 */
-static u8 *lb_buf[2];
-static u8 lb_dirty[2] = { 1, 1 };
+/* 画面バッファの番号 (トリプルバッファ、video_back_index) ごとに持つ */
+static u8 lb_dirty[VIDEO_NBUF] = { 1, 1, 1 };
 static int lb_index(u8 *planes) {
-    for (int i = 0; i < 2; i++)
-        if (lb_buf[i] == planes)
-            return i;
-    for (int i = 0; i < 2; i++)
-        if (!lb_buf[i]) {
-            lb_buf[i] = planes;
-            return i;
-        }
-    return 0;
+    (void)planes;
+    return video_back_index();
 }
 static void lb_mark_all_dirty(void) {
-    lb_dirty[0] = lb_dirty[1] = 1;
+    for (int i = 0; i < VIDEO_NBUF; i++)
+        lb_dirty[i] = 1;
 }
 static void lb_clear(u8 *planes) {
     for (int p = 0; p < 8; p++) {
@@ -1297,10 +1291,10 @@ static void c2p_scene(const u8 *chunky, u8 *planes, int scene) {
         any |= top[i] | bot[i];
     if (scene != c2p_last_scene) {
         c2p_last_scene = scene;
-        c2p_full_frames = 2;
+        c2p_full_frames = VIDEO_NBUF;
     }
     if (any)
-        c2p_full_frames = 2;
+        c2p_full_frames = VIDEO_NBUF;
     /* PANIC (TV の消灯) は前のパートの 256 行の絵を縦に潰していくので、
      * 帯の消し残しが出ないよう常に 256 行を変換する (計算は軽い。
      * 2026-11-15 ユーザー報告: 実機で範囲外が消えていなかった)。 */
@@ -1600,7 +1594,11 @@ int main(void) {
                        (start_scene > 0 && anl_first_scene >= 0 &&
                         cur_scene != anl_first_scene)))
             break;
-        dis_waitb();                     /* VBL 待ち + 経過フレーム数 */
+        /* トリプルバッファでは VBL を待たずに次の絵を描き始める (待ちは
+         * video_flip が、前の予約が表示されるまでの間だけ行う)。カスタム画面
+         * (切り替えをしないパート) は従来どおり 1 VBL に 1 回。 */
+        if (video_custom_screen_active())
+            dis_waitb();                 /* VBL 待ち + 経過フレーム数 */
         music_frame();
 
         /* PROGDIR:mus1.cfg: 起動から約 2 秒後に MUSIC1 を先頭から再生 (テスト) */
@@ -1908,7 +1906,7 @@ int main(void) {
             if (last_scene != cur_scene) {
                 if (last_scene >= 0) {
                     rel_scene = last_scene;
-                    rel_wait = 2;
+                    rel_wait = VIDEO_NBUF;
                 }
                 last_scene = cur_scene;
             } else if (rel_scene >= 0 && --rel_wait <= 0) {
