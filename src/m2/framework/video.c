@@ -101,8 +101,35 @@ static int custom_hires;       /* 1 = 640x256 hires 4 プレーン (ENDSCRL) */
  * scroll_y: 表示開始行 (行単位のオフセット)
  * ファイン分だけ表示データが後ろへずれるため、DDFSTOP を 1 ワード広げて
  * 余分なワードをフェッチする (右端の欠け防止)。モジュロもそれに合わせる。 */
+/* 走査線の位置 (0 = フレームの先頭、PAL は 0..312) */
+static int beam_line(void) {
+    u16 h, l, h2;
+    do {
+        h = *(volatile u16 *)((u8 *)custom + 0x004);    /* VPOSR (V8) */
+        l = *(volatile u16 *)((u8 *)custom + 0x006);    /* VHPOSR */
+        h2 = *(volatile u16 *)((u8 *)custom + 0x004);
+    } while ((h ^ h2) & 1);
+    return ((h2 & 1) << 8) | (l >> 8);
+}
+
+/* 表示中の Copper リストを書き換える前に、Copper がリスト先頭
+ * (ビットプレーンのポインタとパレット、約 10 走査線) を読み終えるのを待つ。
+ * VBL 直後に書くと、読んでいる最中と重なり、プレーンのポインタやパレットが
+ * 新旧混ざった 1 フレームが出て色が乱れる (ALKU ほか、2026-11-17 ユーザー
+ * 指摘)。20..305 行目で書けば、書いた内容は次のフレームから揃って効く。
+ * 割り込みの中からは呼ばないこと。 */
+static void wait_list_idle(void) {
+    for (;;) {
+        int y = beam_line();
+        if (y >= 20 && y <= 305)
+            break;
+    }
+}
+
 static void set_bitplane_slot(int slot, u8 *planes, int stride_bytes, int rows,
                               int scroll_x, int scroll_y) {
+    if (slot == front && pend < 0)
+        wait_list_idle();           /* 表示中のリスト */
     int plane_size = stride_bytes * rows;
     /* HRM: BPLCON1 の delay は「画像を右へずらす」。
      * 左スクロールにするため fine は減算方向にし、コースで 16px 単位に補正する。
@@ -344,19 +371,6 @@ void video_commit_back_shadow(void) {
     commit_rows = 256;
 }
 
-/* 標準画面のプレーン先頭を通常画像 / 黒 (zero_row) に切り替える。 */
-static void set_standard_pointers(int slot, int black) {
-    for (int p = 0; p < SCREEN_PLANES; p++) {
-        u32 addr = black ? (u32)zero_row
-                         : (u32)(screen[slot] + p * PLANE_BYTES);
-        *bplpt_slot[slot][p][0] = (u16)(addr >> 16);
-        *bplpt_slot[slot][p][1] = (u16)(addr & 0xFFFF);
-    }
-    /* 黒の 1 行を毎走査線で読み直す (BPLxMOD = -1 行) */
-    *bplmod_slot[slot][0] = (u16)(black ? -40 : 0);
-    *bplmod_slot[slot][1] = (u16)(black ? -40 : 0);
-}
-
 /* 表示窓を 200 行 (画面の 28..227 行) にする / 256 行に戻す。
  * 2026-11-16 ユーザー提案: 縦 200 ドットのパートは、上下 28 行の黒帯も
  * ビットプレーン DMA で読んでいる。表示窓 (DIWSTRT/DIWSTOP の縦) を
@@ -396,9 +410,15 @@ void video_set_display_start(int y) {
     for (int k = 0; k < VIDEO_NBUF; k++)
         *diwstrt_slot[k] = strt;
     if (black != display_black) {
+        /* 黒は表示窓を空 (開始 = 終了 = 255 行) にして出す (枠の色 =
+         * COLOR00 で、以前の zero_row (色 0) と同じ見た目)。VBL 割り込み
+         * (plasma_vbl_tick) から呼ばれるので、8 プレーンのポインタを
+         * 書き換えると Copper が読む最中と重なり、新旧のポインタが混ざった
+         * 1 フレームが出る。DIWSTOP は 1 語なので混ざらない。 */
         display_black = black;
+        u16 stop = black ? 0xFFC1 : (win200 ? 0x10C1 : 0x2CC1);
         for (int k = 0; k < VIDEO_NBUF; k++)
-            set_standard_pointers(k, black);
+            *diwstop_slot[k] = stop;
     }
 }
 
@@ -465,17 +485,6 @@ u32 video_frame_vbl(void) {
     return fr_target;
 }
 
-/* 走査線の位置 (0 = フレームの先頭、PAL は 0..312) */
-static int beam_line(void) {
-    u16 h, l, h2;
-    do {
-        h = *(volatile u16 *)((u8 *)custom + 0x004);    /* VPOSR (V8) */
-        l = *(volatile u16 *)((u8 *)custom + 0x006);    /* VHPOSR */
-        h2 = *(volatile u16 *)((u8 *)custom + 0x004);
-    } while ((h ^ h2) & 1);
-    return ((h2 & 1) << 8) | (l >> 8);
-}
-
 /* カスタム画面のパレットを表示中のリストへ書く。Copper はフレームの先頭で
  * パレット (約 530 命令 = 約 10 走査線) を読むので、それが終わった後
  * (20 行目以降) で、次の VBL に掛からないうち (305 行目まで) に書く。
@@ -484,11 +493,7 @@ static int beam_line(void) {
 static void custom_commit(void) {
     if (!cpal_dirty || !custom_screen)
         return;
-    for (;;) {
-        int y = beam_line();
-        if (y >= 20 && y <= 305)
-            break;
-    }
+    wait_list_idle();
     write_palette_slot(custom_slot, pal_out);
     slot_pal_ver[custom_slot] = pal_ver;
     cpal_dirty = 0;
@@ -707,6 +712,7 @@ void video_set_palette(const u8 *rgb) {
  * 表示位置などをすぐ変える場面で、古い絵が古いパレットで見えないように
  * する (PLZPART の場面切り替え、2026-11-17 ユーザー指摘)。 */
 void video_set_palette_now(const u8 *rgb) {
+    wait_list_idle();
     for (int i = 0; i < 256 * 3; i++) {
         cur_pal[i] = rgb[i];
         pal_out[i] = rgb[i];
