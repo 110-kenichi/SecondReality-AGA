@@ -1516,6 +1516,16 @@ int main(void) {
                 g_triple = 1;
                 break;
             }
+        /* data/predict.cfg があればトリプルバッファ時に表示 VBL を予測して
+         * 動きを合わせる (既定 OFF、2026-11-17 ユーザー指示) */
+        static const char *const qn[] = {
+            "PROGDIR:data/predict.cfg", "PROGDIR:data/predict.cfg.txt",
+            "PROGDIR:predict.cfg", "PROGDIR:predict.cfg.txt" };
+        for (int i = 0; i < 4; i++)
+            if (file_load_fast(qn[i], 64u, &tsz)) {
+                video_set_predict(1);
+                break;
+            }
     }
     {
         u32 bsz = 0;

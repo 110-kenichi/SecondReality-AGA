@@ -426,6 +426,11 @@ static int fr_hi;
 /* パートの切り替え時にも呼べる。予約中の画面を確定させてから変える。
  * ダブルバッファの描画先は「直前まで表示していた画面」なので、3 枚の
  * どの 2 枚を使っていてもよい。 */
+/* 予測の ON/OFF (既定 OFF、data/predict.cfg で ON。2026-11-17 ユーザー指示)。
+ * ダブルバッファでは常に使わない。 */
+static int predict_on;
+void video_set_predict(int on) { predict_on = on; }
+
 void video_set_triple(int on) {
     int n = on ? 3 : 2;
     if (n == nbuf)
@@ -436,7 +441,7 @@ void video_set_triple(int on) {
 }
 
 u32 video_frame_vbl(void) {
-    if (custom_screen || nbuf == 2)
+    if (custom_screen || nbuf == 2 || !predict_on)
         return vblank_frames();     /* カスタム画面は表示中のリストへ直接書く。
                                      * ダブルバッファは描き始めが VBL 直後に
                                      * 揃うので、今の時刻でよい */

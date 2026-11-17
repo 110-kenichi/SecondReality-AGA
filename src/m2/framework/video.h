@@ -27,6 +27,8 @@ void video_flip(void);
 u32 video_frame_vbl(void);
 /* 1 = トリプルバッファ、0 = ダブルバッファ (既定)。video_init の前に呼ぶ */
 void video_set_triple(int on);
+/* トリプルバッファ時の表示 VBL 予測 (1 = ON、既定 0) */
+void video_set_predict(int on);
 
 /* 両画面の 8 プレーンを 0 クリア (シーン切り替え用) */
 void video_clear_planes(void);

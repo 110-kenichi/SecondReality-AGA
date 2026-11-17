@@ -49,6 +49,8 @@ Known limitations
 - Triple buffering: create data/triple.cfg (any content). Parts that take
   a little more than one frame to draw run faster, but the frame interval
   is less even. Double buffering is the default.
+- With triple buffering, data/predict.cfg (any content) times each frame
+  by the frame it is expected to appear on. Off by default.
 
 ------------------------------------------------------------------------
 日本語
@@ -66,3 +68,5 @@ Shell またはアイコンから起動。
 トリプルバッファ: data/triple.cfg (中身は何でも可) を置くと有効になります。
 描画が 1 フレームを少し超えるパートの fps が上がりますが、表示の間隔は
 不揃いになります。既定はダブルバッファです。
+トリプルバッファのときに data/predict.cfg も置くと、各フレームが表示される
+タイミングを予測して動きを合わせます (既定は OFF)。

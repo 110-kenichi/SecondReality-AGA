@@ -227,6 +227,11 @@ if ($env:M2_TRIPLE -eq "1") {
   [IO.File]::WriteAllText($tc, "1")
   & $xdf $Out write $tc ("data/" + "triple.cfg") | Out-Null
 }
+if ($env:M2_PREDICT -eq "1") {
+  $qc = Join-Path $run "predict.cfg"
+  [IO.File]::WriteAllText($qc, "1")
+  & $xdf $Out write $qc ("data/" + "predict.cfg") | Out-Null
+}
 
 # --- 実機用の転送速度テスト ($env:M2_BENCH=1 で data/bench.cfg を置く。
 #     起動直後に測って data/bench.txt に書き、デモは再生せずに終わる) ---
