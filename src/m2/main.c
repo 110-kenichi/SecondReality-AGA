@@ -262,6 +262,14 @@ static const struct { u8 section, order; } start_pos[20] = {
     {2, 25},  /* 19 CRED */
 };
 static int start_scene = -1;
+/* ダブル / トリプルバッファの選択。既定はダブル、data/triple.cfg で
+ * トリプル。U2E (18) は元々フレームレートが安定しないので常にトリプル
+ * (2026-11-17 ユーザー指示)。 */
+static int g_triple;
+static void pick_buffers(int scene) {
+    video_set_triple(g_triple || scene == 18);
+}
+
 static void load_start_cfg(void) {
     u32 sz = 0;
     const u8 *p = (const u8 *)file_load_fast("PROGDIR:data/start.cfg", 8u, &sz);
@@ -1505,7 +1513,7 @@ int main(void) {
             "PROGDIR:triple.cfg", "PROGDIR:triple.cfg.txt" };
         for (int i = 0; i < 4; i++)
             if (file_load_fast(tn[i], 64u, &tsz)) {
-                video_set_triple(1);
+                g_triple = 1;
                 break;
             }
     }
@@ -1587,12 +1595,14 @@ int main(void) {
         cur_scene = start_scene;
         scene_group = (u16)cur_scene;
     }
+    pick_buffers(cur_scene);
     scene_list[cur_scene].init();
 #endif
 
 #ifdef TEST_FIXED_SCENE
     /* テスト: 指定シーンを固定表示 (切り替えなし) */
     cur_scene = TEST_FIXED_SCENE;
+    pick_buffers(cur_scene);
     scene_list[cur_scene].init();
 #endif
 
@@ -1856,6 +1866,7 @@ int main(void) {
                 for (u32 i = 0; i < (u32)SCREEN_W * SCREEN_H; i++)
                     ch[i] = 0;
             }
+            pick_buffers(pending_scene);
             scene_list[pending_scene].init();
             cur_scene = pending_scene;
             if (seamless) {

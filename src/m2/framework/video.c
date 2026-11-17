@@ -423,7 +423,17 @@ static u32 fr_start, fr_target, fr_last_disp;
 static u8 fr_hist[FR_HIST];
 static int fr_hi;
 
-void video_set_triple(int on) { nbuf = on ? 3 : 2; }
+/* パートの切り替え時にも呼べる。予約中の画面を確定させてから変える。
+ * ダブルバッファの描画先は「直前まで表示していた画面」なので、3 枚の
+ * どの 2 枚を使っていてもよい。 */
+void video_set_triple(int on) {
+    int n = on ? 3 : 2;
+    if (n == nbuf)
+        return;
+    settle_pending();
+    fr_open = 0;
+    nbuf = n;
+}
 
 u32 video_frame_vbl(void) {
     if (custom_screen || nbuf == 2)
@@ -469,11 +479,12 @@ void video_flip(void) {
     pend = back;
     if (nbuf == 2) {
         /* ダブルバッファ: 表示されるまで待ってから、前の表示画面に描く */
+        int old = front;
         while (vblank_frames() == pend_vbl)
             ;
         front = pend;
         pend = -1;
-        back = 1 - front;
+        back = old;
     } else
         back = (VIDEO_NBUF * (VIDEO_NBUF - 1) / 2) - front - pend;   /* 残りの 1 枚 */
     fr_last_disp = pend_vbl + 1;    /* この絵が出る VBL */
