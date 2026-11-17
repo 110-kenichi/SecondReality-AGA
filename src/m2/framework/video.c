@@ -30,6 +30,8 @@ static u16 *fmode_slot[2];
 static u16 *ddfstrt_slot[2];
 static u16 *bplcon0_slot[2];
 static u16 *diwstrt_slot[2];   /* DIWSTRT value word (vertical display start) */
+static u16 *diwstop_slot[2];   /* DIWSTOP value word */
+static int win200;             /* 1 = 表示窓を 28..227 行の 200 行にする */
 
 /* 画面分割 (CRED 用、2026-11-16)。表示の 128 行目で上の画面から下の画面へ
  * 切り替える Copper の命令列。各コッパーリストの最後に置き、使わないときは
@@ -118,7 +120,7 @@ static void build_copper(u16 *c, u8 *planes, int slot) {
     *c++ = 0x0108; bplmod_slot[slot][0] = c; *c++ = 0x0000; /* BPL1MOD */
     *c++ = 0x010A; bplmod_slot[slot][1] = c; *c++ = 0x0000; /* BPL2MOD */
     *c++ = 0x008E; diwstrt_slot[slot] = c; *c++ = 0x2C81;   /* DIWSTRT (line 44 = PAL 標準) */
-    *c++ = 0x0090; *c++ = 0x2CC1;   /* DIWSTOP (line 300 = 44+256) */
+    *c++ = 0x0090; diwstop_slot[slot] = c; *c++ = 0x2CC1;   /* DIWSTOP (line 300 = 44+256) */
     *c++ = 0x0092; ddfstrt_slot[slot] = c; *c++ = 0x0038;   /* DDFSTRT */
     *c++ = 0x0094; ddfstop_slot[slot] = c; *c++ = 0x00B8;   /* DDFSTOP (FMODE=3) */
     *c++ = 0x01FC; fmode_slot[slot] = c; *c++ = 0x0003;     /* FMODE: 64bit フェッチ */
@@ -307,6 +309,27 @@ static void set_standard_pointers(int slot, int black) {
     /* 黒の 1 行を毎走査線で読み直す (BPLxMOD = -1 行) */
     *bplmod_slot[slot][0] = (u16)(black ? -40 : 0);
     *bplmod_slot[slot][1] = (u16)(black ? -40 : 0);
+}
+
+/* 表示窓を 200 行 (画面の 28..227 行) にする / 256 行に戻す。
+ * 2026-11-16 ユーザー提案: 縦 200 ドットのパートは、上下 28 行の黒帯も
+ * ビットプレーン DMA で読んでいる。表示窓 (DIWSTRT/DIWSTOP の縦) を
+ * 200 行にすると、その 56 行は DMA が止まりチップバスが空く。
+ * 表示位置は変えない: 窓の開始を 0x2C+28 行目、終わりを 0x2C+228 行目
+ * (DIWSTOP の縦は 8 ビットで、0x80 未満なら 256 を足した行。0x110 -> 0x10)
+ * にし、プレーンの先頭も 28 行分進める。標準のダブルバッファ画面だけが
+ * 対象 (カスタム画面・PLZPART の縦シフトとは同時に使わない)。 */
+void video_set_window200(int on) {
+    win200 = on ? 1 : 0;
+    for (int slot = 0; slot < 2; slot++) {
+        *diwstrt_slot[slot] = win200 ? 0x4881 : 0x2C81;
+        *diwstop_slot[slot] = win200 ? 0x10C1 : 0x2CC1;
+        for (int p = 0; p < SCREEN_PLANES; p++) {
+            u32 addr = (u32)(screen[slot] + p * PLANE_BYTES + (win200 ? 28 * 40 : 0));
+            *bplpt_slot[slot][p][0] = (u16)(addr >> 16);
+            *bplpt_slot[slot][p][1] = (u16)(addr & 0xFFFF);
+        }
+    }
 }
 
 /* PLZPART: 表示開始走査線を y 行下げる (ハードウェア縦シフト)。

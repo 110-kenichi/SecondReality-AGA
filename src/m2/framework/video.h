@@ -59,6 +59,8 @@ void video_set_scroll(int x);
  * プレーン plane_rows 行) の first_row 行目から出す。128, 129 行目は黒。
  * planes = 0 で解除。video_set_custom_screen(0, 0) でも解除される。 */
 void video_set_split(u8 *planes, int plane_rows, int first_row);
+/* 表示窓を 200 行 (28..227 行) にする (1) / 256 行に戻す (0)。標準画面用。 */
+void video_set_window200(int on);
 
 /* カスタム画面の縦スクロール位置 (行単位、次のフレームから反映) */
 void video_set_scroll_y(int y);

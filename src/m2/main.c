@@ -1222,6 +1222,30 @@ static void bench_run(void) {
     custom->dmacon = DMAF_BLITHOG;
     p = bench_line(p, "blit_ABCD_merge_hog", v);
 
+    /* 表示窓を 200 行にしたとき (上下 56 行のビットプレーン DMA が止まる)
+     * のチップ RAM 書き込みと c2p (2026-11-16 ユーザー提案の効果測定)。
+     * 1 と 2 (256 行表示) と同じ処理。 */
+    video_set_window200(1);
+    vblank_wait();
+    vblank_wait();
+    for (int n = 0; n < BENCH_N; n++) {
+        u32 t0 = prof_lines();
+        for (int pl = 0; pl < 8; pl++) {
+            volatile u32 *d = (volatile u32 *)(chip + pl * 40 * 256 + 28 * 40);
+            for (int i = 0; i < 200 * 40 / 4; i++)
+                d[i] = (u32)i;
+        }
+        v[n] = prof_lines() - t0;
+    }
+    p = bench_line(p, "cpu_chip_write_win200", v);
+    for (int n = 0; n < BENCH_N; n++) {
+        u32 t0 = prof_lines();
+        c2p8_rect(chunky + 28 * SCREEN_W, chip, SCREEN_W, SCREEN_H, 28, 200);
+        v[n] = prof_lines() - t0;
+    }
+    p = bench_line(p, "c2p_to_chip_win200", v);
+    video_set_window200(0);
+
 out:
     bench_len = (int)(p - buf);
 }
